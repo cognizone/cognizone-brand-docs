@@ -1,0 +1,379 @@
+@font-face {
+  font-family: 'Roboto';
+  src: url('fonts/Roboto[wdth,wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('fonts/Roboto-Italic[wdth,wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('fonts/RobotoMono[wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('fonts/RobotoMono-Italic[wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────────── */
+
+@page {
+  size: A4;
+  margin: 25mm 20mm 20mm 20mm;
+}
+
+/* ── Variables ────────────────────────────────────────────────────────────── */
+
+:root {
+  --green:          #058775;
+  --dark:           #353744;
+  --dark2:          #272727;
+  --gray:           #666666;
+  --light-green-bg: #E8F5F3;
+  --mono-green:     #188038;
+  --white:          #ffffff;
+  --border:         #BFBFBF;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+body {
+  font-family: 'Roboto', sans-serif;
+  font-size: 10pt;
+  color: var(--dark);
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Headings ─────────────────────────────────────────────────────────────── */
+
+h1 {
+  font-size: 14pt;
+  font-weight: 700;
+  color: var(--dark);
+  margin-top: 16pt;
+  margin-bottom: 6pt;
+  page-break-after: avoid;
+}
+
+h2 {
+  font-size: 13pt;
+  font-weight: 700;
+  color: var(--dark);
+  margin-top: 13pt;
+  margin-bottom: 5pt;
+  padding-bottom: 3pt;
+  border-bottom: 0.25px solid var(--dark);
+  page-break-after: avoid;
+}
+
+h3 {
+  font-size: 12pt;
+  font-weight: 700;
+  color: var(--green);
+  margin-top: 10pt;
+  margin-bottom: 4pt;
+  page-break-after: avoid;
+}
+
+h4 {
+  font-size: 11pt;
+  font-weight: 700;
+  color: var(--dark2);
+  margin-top: 8pt;
+  margin-bottom: 3pt;
+  page-break-after: avoid;
+}
+
+/* ── Body text ────────────────────────────────────────────────────────────── */
+
+p {
+  margin-top: 0;
+  margin-bottom: 8pt;
+}
+
+/* ── Inline code ──────────────────────────────────────────────────────────── */
+
+code {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 9pt;
+  color: var(--mono-green);
+  background-color: #f5f5f5;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+/* ── Code blocks ──────────────────────────────────────────────────────────── */
+
+pre {
+  background-color: #f5f5f5;
+  border-left: 3px solid var(--green);
+  padding: 10pt 12pt;
+  margin: 8pt 0;
+  page-break-inside: avoid;
+  overflow-x: auto;
+}
+
+pre code {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
+  color: var(--mono-green);
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* ── Blockquote / callout ─────────────────────────────────────────────────── */
+
+blockquote {
+  margin: 8pt 0;
+  padding: 6pt 12pt;
+  border-left: 4px solid var(--green);
+  font-style: italic;
+  color: #444444;
+  background: none;
+}
+
+blockquote p {
+  margin-bottom: 0;
+}
+
+/* ── TODO blocks (indented code lines starting with TODO:) ────────────────── */
+
+pre code.language-todo,
+code.todo {
+  color: #BF5700;
+}
+
+/* Pandoc renders "    TODO: ..." as a code block — style it as a warning */
+pre:has(code:-webkit-any(:first-line)) {
+  border-left-color: var(--green);
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 10pt 0;
+  font-size: 9.5pt;
+  page-break-inside: avoid;
+}
+
+thead tr {
+  background-color: var(--green);
+  color: var(--white);
+}
+
+thead th {
+  font-weight: 700;
+  padding: 6pt 8pt;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+
+tbody tr:nth-child(even) {
+  background-color: var(--light-green-bg);
+}
+
+tbody tr:nth-child(odd) {
+  background-color: var(--white);
+}
+
+tbody td {
+  padding: 5pt 8pt;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+/* ── Lists ────────────────────────────────────────────────────────────────── */
+
+ul, ol {
+  margin: 4pt 0 8pt 0;
+  padding-left: 20pt;
+}
+
+li {
+  margin-bottom: 3pt;
+  line-height: 1.5;
+}
+
+/* ── Links ────────────────────────────────────────────────────────────────── */
+
+a {
+  color: var(--green);
+  text-decoration: none;
+}
+
+/* ── Horizontal rule ──────────────────────────────────────────────────────── */
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 12pt 0;
+}
+
+/* Header and footer are rendered by Puppeteer in the page margin — no CSS needed. */
+
+/* ── Cover page ───────────────────────────────────────────────────────────── */
+
+.cover-page {
+  margin-top: 20mm;
+  padding: 0;
+}
+
+.cover-logo-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4pt;
+  margin-bottom: 32pt;
+}
+
+.cover-logo {
+  height: 36px;
+  width: auto;
+  max-width: 220px;
+}
+
+.cover-contact {
+  display: flex;
+  flex-direction: column;
+  gap: 2pt;
+  margin-bottom: 32pt;
+  align-items: flex-end;
+  text-align: right;
+}
+
+.cover-contact a {
+  font-size: 9pt;
+  color: #0563C1;
+  text-decoration: none;
+}
+
+.cover-id {
+  font-size: 13pt;
+  font-weight: 700;
+  color: var(--green);
+  letter-spacing: 0.05em;
+  margin: 0 0 8pt 0;
+}
+
+.cover-title {
+  font-size: 22pt;
+  font-weight: 700;
+  color: var(--dark);
+  margin: 0 0 24pt 0;
+  counter-increment: none;
+  line-height: 1.2;
+}
+
+.cover-title::before {
+  content: none;
+}
+
+.cover-meta-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10pt;
+  margin-top: 0;
+}
+
+.cover-meta-table td {
+  padding: 6pt 10pt;
+  border: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.cover-meta-table .meta-label {
+  font-weight: 700;
+  background-color: #EAF0F8;
+  width: 30%;
+}
+
+/* ── Table of contents ────────────────────────────────────────────────────── */
+
+#TOC {
+  font-size: 10pt;
+  margin-top: 16pt;
+}
+
+#TOC ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+#TOC ul ul {
+  padding-left: 16pt;
+}
+
+/* Top-level entries (H2) */
+#TOC > ul > li {
+  margin-bottom: 7pt;
+}
+
+#TOC > ul > li > a {
+  font-weight: 700;
+  color: var(--dark);
+}
+
+/* Sub-entries (H3) */
+#TOC > ul > li > ul > li {
+  margin-bottom: 3pt;
+}
+
+#TOC > ul > li > ul > li > a {
+  font-weight: 400;
+  color: var(--gray);
+}
+
+#TOC a {
+  display: flex;
+  align-items: baseline;
+  text-decoration: none;
+}
+
+#TOC a .toc-title {
+  flex-shrink: 1;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+#TOC a .toc-leader {
+  flex: 1;
+  border-bottom: 1px dotted var(--border);
+  margin: 0 6pt 3pt 6pt;
+  min-width: 12pt;
+}
+
+#TOC a .toc-page {
+  flex-shrink: 0;
+  color: var(--gray);
+}
+
+/* ── Page break ───────────────────────────────────────────────────────────── */
+
+.page-break {
+  page-break-after: always;
+}
+
+/* ── Strong / em ──────────────────────────────────────────────────────────── */
+
+strong {
+  font-weight: 700;
+}
+
+em {
+  font-style: italic;
+}

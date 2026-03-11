@@ -1,0 +1,23 @@
+{
+  "name": "@cognizone/brand-docs",
+  "version": "0.1.0",
+  "description": "Cognizone branded document conversion (PDF, Word)",
+  "type": "commonjs",
+  "bin": {
+    "cognizone-convert": "./bin/cognizone-convert.js"
+  },
+  "files": [
+    "bin/",
+    "templates/",
+    "export-to-pdf.sh"
+  ],
+  "dependencies": {
+    "puppeteer": "^24.39.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}
