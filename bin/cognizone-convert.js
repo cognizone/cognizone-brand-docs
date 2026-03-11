@@ -21,10 +21,10 @@ Requirements:
   process.exit(0);
 }
 
-const script = path.join(__dirname, '..', 'export-to-pdf.sh');
+const script = path.join(__dirname, 'convert.js');
 
 try {
-  execFileSync('bash', [script, ...args], { stdio: 'inherit' });
+  execFileSync(process.execPath, [script, ...args], { stdio: 'inherit' });
 } catch (e) {
   process.exit(e.status || 1);
 }

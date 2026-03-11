@@ -2,6 +2,7 @@
 // Usage: node pdf-print.js <input.html> <output.pdf> <title> <date> <logo.png>
 
 const puppeteer = require('puppeteer');
+const { pathToFileURL } = require('url');
 const fs = require('fs');
 const path = require('path');
 
@@ -57,7 +58,7 @@ const footerTemplate = `
   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
   const page = await browser.newPage();
 
-  await page.goto(`file://${htmlFile}`, { waitUntil: 'networkidle0' });
+  await page.goto(pathToFileURL(htmlFile).href, { waitUntil: 'networkidle0' });
 
   // Inject page numbers into TOC entries
   await page.evaluate(() => {
