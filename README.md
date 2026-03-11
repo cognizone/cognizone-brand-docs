@@ -2,10 +2,11 @@
 
 Cognizone branded document conversion. Converts Markdown files to PDF using Cognizone brand styles (colors, fonts, layout).
 
+Works on macOS, Linux, and Windows — no bash or pandoc required.
+
 ## Requirements
 
 - [Node.js](https://nodejs.org/) ≥ 18
-- [pandoc](https://pandoc.org/) — `brew install pandoc`
 
 ## Installation
 

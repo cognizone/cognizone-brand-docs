@@ -12,25 +12,25 @@ Published to GitHub Packages as an internal npm package. CLI command: `cognizone
 
 ```
 bin/
-  cognizone-convert.js    # CLI entry point — thin wrapper that calls export-to-pdf.sh
+  cognizone-convert.js    # CLI entry point — parses args, calls convert.js
+  convert.js              # Full conversion pipeline (cross-platform, pure Node.js)
 templates/
   styles.css              # Cognizone brand CSS for PDF output
   pdf-print.js            # Puppeteer script — renders HTML to PDF with headers/footers
   logo.png                # Cognizone logo (used in PDF header)
   fonts/                  # Roboto + Roboto Mono variable fonts (TTF)
-export-to-pdf.sh          # Main PDF conversion script (bash + pandoc + puppeteer)
 package.json              # npm package config
 .npmrc                    # Points @cognizone scope to GitHub Packages
 ```
 
 ## PDF Pipeline
 
-`export-to-pdf.sh` orchestrates the full conversion:
+`bin/convert.js` orchestrates the full conversion (pure Node.js, no bash or pandoc):
 
-1. **Parse frontmatter** — extracts `title`, `id`, `type`, `status`, `date` from YAML frontmatter
-2. **Strip frontmatter + H1** — body starts from the first H2
-3. **Generate TOC** — `pandoc --toc --number-sections --standalone | awk '/<nav /,/<\/nav>/'`
-4. **Convert body** — `pandoc --number-sections` (section numbers match TOC)
+1. **Parse frontmatter** — `gray-matter` extracts `title`, `id`, `type`, `status`, `date`
+2. **Strip H1** — body starts from the first H2
+3. **Render body HTML + section numbers** — `marked` with a custom renderer; H2 = "1", H3 = "1.1", etc.
+4. **Generate TOC** — collected during rendering via `walkTokens`, built as `<nav id="TOC">`
 5. **Assemble HTML** — cover page + TOC page + document body
 6. **Render PDF** — `node templates/pdf-print.js` via Puppeteer
 
@@ -40,6 +40,10 @@ package.json              # npm package config
 - Injects branded `headerTemplate` and `footerTemplate` (rendered in page margins on every page)
 - Uses `page.evaluate()` to calculate and inject page numbers into TOC before printing
 - `page.pdf()` with `margin: { top: 25mm, bottom: 20mm, left: 20mm, right: 20mm }`
+
+## marked v13 renderer note
+
+`marked.use()` renderer overrides are **post-processors**: the function receives the already-rendered inner HTML string from the default renderer (not the token). To correlate with token data, use `walkTokens` to collect heading metadata in order, then match by index in the renderer override.
 
 ## Brand Styles
 
@@ -77,7 +81,7 @@ Running header: `{ID} - {title}` (e.g. `ADR-001 - Architecture Pattern: ...`).
 
 ## Markdown Authoring Rule
 
-**Always put a blank line between a label/paragraph and the list that follows it.** Pandoc requires this — without it, list items render as paragraph text in PDF output.
+**Always put a blank line between a label/paragraph and the list that follows it.**
 
 ```markdown
 <!-- WRONG -->
