@@ -104,24 +104,27 @@ Word export is planned as the second output format. Key notes:
 - The output should match Cognizone brand styles (same colors, fonts, layout)
 - Likely approach: a template `.docx` with pre-configured styles, populated via a library
   (e.g. `docxtemplater`, `officegen`, or `mammoth`)
-- CLI will extend `cognizone-convert` with a `--format` flag or a separate subcommand
+- CLI will extend `cognizone-convert` with a `--format` / `-f` flag, defaulting to `pdf`:
+  ```bash
+  cognizone-convert document.md                # PDF (default)
+  cognizone-convert document.md --format pdf   # explicit PDF
+  cognizone-convert document.md --format docx  # Word
+  cognizone-convert document.md -f docx        # short form
+  ```
 
 ## Publishing
 
 Package is published to GitHub Packages under the `@cognizone` scope.
 
-To publish:
+Publishing is automated via GitHub Actions — triggered by pushing a version tag:
 
 ```bash
-npm publish
+# 1. Bump version in package.json
+# 2. Commit and tag
+git add package.json && git commit -m "chore: bump version to x.y.z"
+git tag vx.y.z
+git push origin main --tags
 ```
 
-To install in another project:
+The workflow (`.github/workflows/publish.yml`) runs automatically on any `v*` tag.
 
-```bash
-# ~/.npmrc must contain:
-# @cognizone:registry=https://npm.pkg.github.com
-# //npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
-
-npm install @cognizone/brand-docs
-```
