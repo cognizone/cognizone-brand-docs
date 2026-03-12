@@ -1,6 +1,6 @@
 # @cognizone/brand-docs
 
-Cognizone branded document conversion. Converts Markdown files to PDF using Cognizone brand styles (colors, fonts, layout).
+Cognizone branded document conversion. Converts Markdown files to PDF or Word (.docx) using Cognizone brand styles (colors, fonts, layout).
 
 Works on macOS, Linux, and Windows — no bash or pandoc required.
 
@@ -42,8 +42,12 @@ npm install -g @cognizone/brand-docs
 
 ```bash
 cognizone-convert document.md                        # converts to PDF (default)
+cognizone-convert document.md --format docx          # converts to Word
+cognizone-convert document.md -f docx                # short form
 cognizone-convert document.md output/custom-name.pdf # custom output path
 ```
+
+> **Note (Word output):** Word documents reference fonts by name. For correct rendering, install [Roboto](https://fonts.google.com/specimen/Roboto) and [Roboto Mono](https://fonts.google.com/specimen/Roboto+Mono) on the machine opening the `.docx` file.
 
 ## Document format
 
@@ -56,7 +60,10 @@ id: ADR-001
 type: adr
 status: draft
 date: 2025-01-01
+author: Cognizone
+client: "ERA — European Union Agency for Railways"
+project: REG+
 ---
 ```
 
-Supported frontmatter fields: `title`, `id`, `type`, `status`, `date`.
+All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `date`, `author`, `client`, `project`.

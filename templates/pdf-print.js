@@ -6,7 +6,7 @@ const { pathToFileURL } = require('url');
 const fs = require('fs');
 const path = require('path');
 
-const [,, htmlFile, outputPdf, title, date, logoPath] = process.argv;
+const [,, htmlFile, outputPdf, title, date, logoPath, footerTitle] = process.argv;
 
 const GREEN = '#058775';
 const GRAY  = '#666666';
@@ -49,7 +49,7 @@ const footerTemplate = `
       border-top: 0.5px solid ${GREEN};
       font-size: 8pt; font-family: 'Roboto', sans-serif; color: ${GRAY};
     ">
-      <span>Cognizone · ERA REG+</span>
+      <span>${footerTitle || ''}</span>
       <span class="pageNumber"></span>
     </div>
   </div>`;

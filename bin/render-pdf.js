@@ -46,7 +46,7 @@ function buildToc(entries) {
 }
 
 function renderPdf(parsed, outputFile) {
-  const { title, id, type, status, date, headerTitle, tocEntries, mdNoH1 } = parsed;
+  const { title, id, type, status, date, author, client, project, headerTitle, footerTitle, tocEntries, mdNoH1 } = parsed;
 
   // ── Render body HTML with section numbers ──────────────────────────────────
   // In marked v13, renderer overrides are post-processors: the function
@@ -74,9 +74,9 @@ function renderPdf(parsed, outputFile) {
     ['Type',           type],
     ['Date',           date],
     ['Status',         status],
-    ['Author',         'Cognizone'],
-    ['Client',         'ERA — European Union Agency for Railways'],
-    ['Project',        'REG+'],
+    ['Author',         author],
+    ['Client',         client],
+    ['Project',        project],
   ].filter(([, v]) => v)
    .map(([l, v]) => `<tr><td class="meta-label">${l}</td><td>${v}</td></tr>`)
    .join('\n      ');
@@ -127,7 +127,7 @@ function renderPdf(parsed, outputFile) {
   try {
     execFileSync('node', [
       path.join(SCRIPT_DIR, 'templates', 'pdf-print.js'),
-      tmpHtml, outputFile, headerTitle, date, LOGO_PATH,
+      tmpHtml, outputFile, headerTitle, date, LOGO_PATH, footerTitle,
     ], { stdio: 'inherit' });
   } finally {
     try { fs.unlinkSync(tmpHtml); } catch { /* ignore */ }

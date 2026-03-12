@@ -20,7 +20,11 @@ function parseMarkdown(inputFile) {
   const type        = String(fm.type   || '');
   const status      = String(fm.status || '');
   const date        = fm.date instanceof Date ? fm.date.toISOString().slice(0, 10) : fm.date ? String(fm.date) : '';
+  const author      = String(fm.author  || '');
+  const client      = String(fm.client  || '');
+  const project     = String(fm.project || '');
   const headerTitle = id ? `${id} - ${title}` : title;
+  const footerTitle = [client, project].filter(Boolean).join(' \u00B7 ');
 
   // Strip H1
   const mdNoH1 = mdBody.replace(/^#\s[^\n]*\n?/m, '');
@@ -62,7 +66,7 @@ function parseMarkdown(inputFile) {
   walkHeadings(tokens);
 
   return {
-    fm, title, id, type, status, date, headerTitle,
+    fm, title, id, type, status, date, author, client, project, headerTitle, footerTitle,
     tokens, tocEntries, mdNoH1,
   };
 }

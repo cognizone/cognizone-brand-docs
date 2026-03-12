@@ -404,11 +404,11 @@ function buildHeader(headerTitle) {
   });
 }
 
-function buildFooter() {
+function buildFooter(footerTitle) {
   return new Footer({
     children: [new Paragraph({
       children: [
-        new TextRun({ text: 'Cognizone \u00B7 ERA REG+', font: FONT_BODY, size: 16, color: '000000' }),
+        new TextRun({ text: footerTitle, font: FONT_BODY, size: 16, color: '000000' }),
         new TextRun({ text: '\t', font: FONT_BODY, size: 16 }),
         new TextRun({ children: [PageNumber.CURRENT], font: FONT_BODY, size: 16, color: '000000' }),
       ],
@@ -420,7 +420,7 @@ function buildFooter() {
 
 // ── Cover page ───────────────────────────────────────────────────────────────
 function buildCoverPage(parsed) {
-  const { title, id, type, status, date } = parsed;
+  const { title, id, type, status, date, author, client, project } = parsed;
   const children = [];
 
   // Logo (left) + email (right)
@@ -488,9 +488,9 @@ function buildCoverPage(parsed) {
     ['Type',           type],
     ['Date',           date],
     ['Status',         status],
-    ['Author',         'Cognizone'],
-    ['Client',         'ERA \u2014 European Union Agency for Railways'],
-    ['Project',        'REG+'],
+    ['Author',         author],
+    ['Client',         client],
+    ['Project',        project],
   ].filter(([, v]) => v);
 
   if (metaData.length) {
@@ -589,7 +589,7 @@ const sectionProps = {
 
 // ── Main render function ─────────────────────────────────────────────────────
 async function renderDocx(parsed, outputFile) {
-  const { headerTitle, tokens, tocEntries } = parsed;
+  const { headerTitle, footerTitle, tokens, tocEntries } = parsed;
 
   // Cover page section (no header/footer — omit headers/footers entirely;
   // setting empty Header({children:[]}) poisons subsequent sections)
@@ -608,7 +608,7 @@ async function renderDocx(parsed, outputFile) {
       type: SectionType.NEXT_PAGE,
     },
     headers: { default: buildHeader(headerTitle) },
-    footers: { default: buildFooter() },
+    footers: { default: buildFooter(footerTitle) },
     children: [
       new Paragraph({
         heading: HeadingLevel.HEADING_2,
@@ -637,7 +637,7 @@ async function renderDocx(parsed, outputFile) {
       type: SectionType.NEXT_PAGE,
     },
     headers: { default: buildHeader(headerTitle) },
-    footers: { default: buildFooter() },
+    footers: { default: buildFooter(footerTitle) },
     children: bodyElements,
   };
 
