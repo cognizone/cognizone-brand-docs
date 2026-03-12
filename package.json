@@ -6,6 +6,9 @@
   "bin": {
     "cognizone-convert": "./bin/cognizone-convert.js"
   },
+  "scripts": {
+    "test": "node test/run.js"
+  },
   "files": [
     "bin/",
     "templates/"

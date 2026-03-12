@@ -46,7 +46,7 @@ function buildToc(entries) {
 }
 
 function renderPdf(parsed, outputFile) {
-  const { title, id, type, status, date, author, client, project, headerTitle, footerTitle, tocEntries, mdNoH1 } = parsed;
+  const { title, id, type, status, date, author, client, project, headerTitle, footerTitle, inputDir, tocEntries, mdNoH1 } = parsed;
 
   // ── Render body HTML with section numbers ──────────────────────────────────
   // In marked v13, renderer overrides are post-processors: the function
@@ -88,6 +88,7 @@ function renderPdf(parsed, outputFile) {
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <base href="${pathToFileURL(inputDir + '/').href}">
   <link rel="stylesheet" href="${cssUrl}">
 </head>
 <body>

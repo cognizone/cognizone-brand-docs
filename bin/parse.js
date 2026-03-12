@@ -67,7 +67,7 @@ function parseMarkdown(inputFile) {
 
   return {
     fm, title, id, type, status, date, author, client, project, headerTitle, footerTitle,
-    tokens, tocEntries, mdNoH1,
+    inputDir: path.dirname(inputFile), tokens, tocEntries, mdNoH1,
   };
 }
 

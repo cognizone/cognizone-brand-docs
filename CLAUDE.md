@@ -136,6 +136,7 @@ H1 is stripped from body (used on cover page only). Body headings get section nu
 - **Links**: `#058775` (green), no underline
 - **Horizontal rules**: 1px `#BFBFBF`
 - **Lists**: Bullet (•/◦/–) and ordered (1./a./i.) with nested indentation
+- **Images**: `![alt](path)` and `<img>` tags supported; PDF constrains via `max-width: 100%`; DOCX scales to max 500px wide preserving aspect ratio. Paths resolve relative to the input markdown file
 
 ### Document structure
 

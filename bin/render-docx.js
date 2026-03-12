@@ -41,24 +41,27 @@ const CONTENT_WIDTH_TWIP = convertMillimetersToTwip(170);
 
 // ── Numbering definitions (bullets + ordered) ────────────────────────────────
 function buildNumberingConfig() {
+  // OOXML requires exactly 9 levels (0-8) per numbering definition
+  const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  const bulletChars = ['\u2022', '\u25E6', '\u2013']; // •, ◦, –
   return {
     config: [
       {
         reference: 'bullet-list',
-        levels: [0, 1, 2, 3, 4].map(level => ({
+        levels: LEVELS.map(level => ({
           level,
           format: LevelFormat.BULLET,
-          text: level === 0 ? '\u2022' : level === 1 ? '\u25E6' : '\u2013',
+          text: bulletChars[level % 3],
           alignment: AlignmentType.LEFT,
           style: { paragraph: { indent: { left: convertMillimetersToTwip(5 * (level + 1)), hanging: convertMillimetersToTwip(3) } } },
         })),
       },
       {
         reference: 'ordered-list',
-        levels: [0, 1, 2, 3, 4].map(level => ({
+        levels: LEVELS.map(level => ({
           level,
-          format: level === 0 ? LevelFormat.DECIMAL : level === 1 ? LevelFormat.LOWER_LETTER : LevelFormat.LOWER_ROMAN,
-          text: level === 0 ? '%1.' : level === 1 ? '%2.' : '%3.',
+          format: level % 3 === 0 ? LevelFormat.DECIMAL : level % 3 === 1 ? LevelFormat.LOWER_LETTER : LevelFormat.LOWER_ROMAN,
+          text: `%${level + 1}.`,
           alignment: AlignmentType.LEFT,
           style: { paragraph: { indent: { left: convertMillimetersToTwip(5 * (level + 1)), hanging: convertMillimetersToTwip(3) } } },
         })),
@@ -68,6 +71,16 @@ function buildNumberingConfig() {
 }
 
 // ── Inline token → TextRun conversion ────────────────────────────────────────
+let _inputDir = process.cwd();
+
+function detectImageType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'jpg';
+  if (ext === '.gif') return 'gif';
+  if (ext === '.bmp') return 'bmp';
+  return 'png';
+}
+
 function inlineToRuns(tokens, ctx = {}) {
   if (!tokens || !tokens.length) return [];
   const runs = [];
@@ -116,12 +129,19 @@ function inlineToRuns(tokens, ctx = {}) {
         }));
         break;
       case 'image': {
-        const imgPath = t.href.startsWith('http') ? null : path.resolve(t.href);
+        const imgPath = t.href.startsWith('http') ? null : path.resolve(_inputDir, t.href);
         if (imgPath && fs.existsSync(imgPath)) {
+          const imgBuf = fs.readFileSync(imgPath);
+          // Read PNG dimensions from header (offset 16=width, 20=height, 4 bytes BE)
+          const isPng = imgBuf[0] === 137 && imgBuf[1] === 80;
+          const imgW = isPng ? imgBuf.readUInt32BE(16) : 400;
+          const imgH = isPng ? imgBuf.readUInt32BE(20) : 300;
+          // Scale to max 500px wide, preserving aspect ratio
+          const scale = Math.min(1, 500 / imgW);
           runs.push(new ImageRun({
-            data: fs.readFileSync(imgPath),
-            transformation: { width: 400, height: 300 },
-            type: 'png',
+            type: detectImageType(imgPath),
+            data: imgBuf,
+            transformation: { width: Math.round(imgW * scale), height: Math.round(imgH * scale) },
           }));
         } else {
           runs.push(new TextRun({ text: `[${t.text || t.href}]`, color: GRAY }));
@@ -186,7 +206,7 @@ function tokensToElements(tokens, listDepth = 0) {
             after: 120,
           },
           border: level === 2 ? {
-            bottom: { style: BorderStyle.SINGLE, size: 1, color: DARK },
+            bottom: { style: BorderStyle.SINGLE, size: 4, color: DARK },
           } : undefined,
         }));
         break;
@@ -210,9 +230,9 @@ function tokensToElements(tokens, listDepth = 0) {
                 new TableCell({
                   shading: { fill: 'F5F5F5', type: ShadingType.CLEAR },
                   borders: {
-                    top: { style: BorderStyle.SINGLE, size: 1, color: 'E0E0E0' },
-                    bottom: { style: BorderStyle.SINGLE, size: 1, color: 'E0E0E0' },
-                    right: { style: BorderStyle.SINGLE, size: 1, color: 'E0E0E0' },
+                    top: { style: BorderStyle.SINGLE, size: 4, color: 'E0E0E0' },
+                    bottom: { style: BorderStyle.SINGLE, size: 4, color: 'E0E0E0' },
+                    right: { style: BorderStyle.SINGLE, size: 4, color: 'E0E0E0' },
                     left: { style: BorderStyle.SINGLE, size: 6, color: GREEN },
                   },
                   children: codeLines.map(line =>
@@ -313,7 +333,7 @@ function tokensToElements(tokens, listDepth = 0) {
 
       case 'hr':
         elements.push(new Paragraph({
-          border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: BORDER_COLOR } },
+          border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: BORDER_COLOR } },
           spacing: { before: 200, after: 200 },
         }));
         break;
@@ -322,9 +342,32 @@ function tokensToElements(tokens, listDepth = 0) {
         // Skip whitespace tokens
         break;
 
-      case 'html':
-        // Skip raw HTML
+      case 'html': {
+        // Handle <img> tags; skip other HTML
+        const imgMatch = token.raw.match(/<img\s[^>]*src=["']([^"']+)["'][^>]*>/i);
+        if (imgMatch) {
+          const src = imgMatch[1];
+          const wMatch = token.raw.match(/width=["']?(\d+)["']?/i);
+          const hMatch = token.raw.match(/height=["']?(\d+)["']?/i);
+          const imgPath = src.startsWith('http') ? null : path.resolve(_inputDir, src);
+          if (imgPath && fs.existsSync(imgPath)) {
+            const imgBuf = fs.readFileSync(imgPath);
+            const isPng = imgBuf[0] === 137 && imgBuf[1] === 80;
+            let imgW = wMatch ? parseInt(wMatch[1], 10) : isPng ? imgBuf.readUInt32BE(16) : 400;
+            let imgH = hMatch ? parseInt(hMatch[1], 10) : isPng ? imgBuf.readUInt32BE(20) : 300;
+            const scale = Math.min(1, 500 / imgW);
+            elements.push(new Paragraph({
+              children: [new ImageRun({
+                type: detectImageType(imgPath),
+                data: imgBuf,
+                transformation: { width: Math.round(imgW * scale), height: Math.round(imgH * scale) },
+              })],
+              spacing: { after: 120 },
+            }));
+          }
+        }
         break;
+      }
 
       default:
         // Unknown token — render as plain text if possible
@@ -373,7 +416,7 @@ function listItemToElements(item, ref, depth) {
 }
 
 function cellBorders() {
-  const b = { style: BorderStyle.SINGLE, size: 1, color: BORDER_COLOR };
+  const b = { style: BorderStyle.SINGLE, size: 4, color: BORDER_COLOR };
   return { top: b, bottom: b, left: b, right: b };
 }
 
@@ -398,7 +441,7 @@ function buildHeader(headerTitle) {
     children: [new Paragraph({
       children,
       tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP }],
-      border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: GREEN, space: 4 } },
+      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: GREEN, space: 4 } },
       spacing: { after: 80 },
     })],
   });
@@ -413,7 +456,7 @@ function buildFooter(footerTitle) {
         new TextRun({ children: [PageNumber.CURRENT], font: FONT_BODY, size: 16, color: '000000' }),
       ],
       tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP }],
-      border: { top: { style: BorderStyle.SINGLE, size: 1, color: GREEN, space: 4 } },
+      border: { top: { style: BorderStyle.SINGLE, size: 4, color: GREEN, space: 4 } },
     })],
   });
 }
@@ -589,7 +632,8 @@ const sectionProps = {
 
 // ── Main render function ─────────────────────────────────────────────────────
 async function renderDocx(parsed, outputFile) {
-  const { headerTitle, footerTitle, tokens, tocEntries } = parsed;
+  const { headerTitle, footerTitle, inputDir, tokens, tocEntries } = parsed;
+  _inputDir = inputDir || process.cwd();
 
   // Cover page section (no header/footer — omit headers/footers entirely;
   // setting empty Header({children:[]}) poisons subsequent sections)
@@ -620,7 +664,7 @@ async function renderDocx(parsed, outputFile) {
           color: DARK,
         })],
         spacing: { after: 200 },
-        border: { bottom: { style: BorderStyle.SINGLE, size: 1, color: DARK } },
+        border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: DARK } },
       }),
       new TableOfContents('Table of Contents', {
         hyperlink: true,
