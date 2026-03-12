@@ -11,6 +11,7 @@
     "templates/"
   ],
   "dependencies": {
+    "docx": "^9.6.1",
     "gray-matter": "^4.0.3",
     "marked": "^13.0.0",
     "puppeteer": "^24.39.0"

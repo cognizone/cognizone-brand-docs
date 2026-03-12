@@ -8,15 +8,19 @@ const args = process.argv.slice(2);
 
 if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
   console.log(`
-Usage: cognizone-convert <input.md> [output.pdf]
+Usage: cognizone-convert <input.md> [output] [options]
 
-Converts a Markdown file to a branded Cognizone PDF.
+Converts a Markdown file to a branded Cognizone document.
 
 Options:
-  -h, --help    Show this help message
+  -f, --format <pdf|docx>  Output format (default: pdf)
+  -h, --help               Show this help message
 
-Requirements:
-  pandoc must be installed (brew install pandoc)
+Examples:
+  cognizone-convert document.md
+  cognizone-convert document.md --format docx
+  cognizone-convert document.md output.pdf
+  cognizone-convert document.md -f docx
 `);
   process.exit(0);
 }
