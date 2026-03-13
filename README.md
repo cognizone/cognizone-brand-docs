@@ -67,3 +67,25 @@ project: REG+
 ```
 
 All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `date`, `author`, `client`, `project`.
+
+## Output preview
+
+Sample outputs generated from the [test fixture](test/fixture.md): [PDF](test/output/fixture.pdf) | [Word](test/output/fixture.docx)
+
+PDF output with Cognizone brand styling:
+
+### Cover page with header
+
+![Cover page](docs/screenshots/cover-page.png)
+
+### Footer
+
+![Footer](docs/screenshots/footer.png)
+
+### Table of contents
+
+![Table of contents](docs/screenshots/table-of-contents.png)
+
+### Body content
+
+![Body content](docs/screenshots/body-content.png)

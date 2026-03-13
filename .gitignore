@@ -1,5 +1,9 @@
 node_modules/
 *.pdf
 .idea/
-test/output/
+test/output/*
+
+# Keep fixture outputs as sample references
+!test/output/fixture.pdf
+!test/output/fixture.docx
 
