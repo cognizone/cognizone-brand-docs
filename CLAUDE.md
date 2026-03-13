@@ -6,7 +6,7 @@ This file provides guidance to Claude Code when working in this repository.
 
 This is the **Cognizone branded document conversion** package (`@cognizone/brand-docs`). It converts Markdown files to branded output formats (PDF, Word) using Cognizone brand styles — colors, fonts, and layout.
 
-Published to GitHub Packages as an internal npm package. CLI command: `cognizone-convert`.
+Published to GitHub Packages. Installed via Git URL: `npm install -g cognizone/cognizone-brand-docs`. CLI command: `cognizone-convert`.
 
 ## Repo Structure
 
@@ -23,7 +23,6 @@ templates/
   logo.png                # Cognizone logo (used in headers)
   fonts/                  # Roboto + Roboto Mono variable fonts (TTF)
 package.json              # npm package config
-.npmrc                    # Points @cognizone scope to GitHub Packages
 ```
 
 ## Conversion Pipeline
@@ -178,9 +177,19 @@ Key forces:
 
 This applies to any label ending in `:` followed by a list.
 
+## Installation
+
+Install via Git URL (no npm registry config needed):
+
+```bash
+npm install -g cognizone/cognizone-brand-docs
+```
+
+To update, run the same command again.
+
 ## Publishing
 
-Package is published to GitHub Packages under the `@cognizone` scope.
+Package is published to GitHub Packages under the `@cognizone` scope. Users install via Git URL (not the registry) to avoid scope conflicts with `@cognizone` OSS packages on npmjs.com.
 
 Publishing is automated via GitHub Actions — triggered by pushing a version tag:
 
