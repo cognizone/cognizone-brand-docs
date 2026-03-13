@@ -4,6 +4,18 @@ Cognizone branded document conversion. Converts Markdown files to PDF or Word (.
 
 Works on macOS, Linux, and Windows — no bash or pandoc required.
 
+## Features
+
+- **PDF and Word output** from a single Markdown source
+- **Branded cover page** with document ID, title, and metadata table
+- **Auto-generated table of contents** with section numbers and page references
+- **Branded headers and footers** with logo, document title, client/project info, and page numbers
+- **Full Markdown support** — headings, tables, lists (nested/mixed), code blocks, blockquotes, images, links, inline formatting
+- **HTML `<img>` tags** with width/height for precise image sizing
+- **YAML frontmatter** for document metadata (title, id, type, status, date, author, client, project)
+- **Cognizone brand styles** — colors, Roboto/Roboto Mono fonts, A4 layout
+- **Cross-platform** — pure Node.js, no bash or pandoc dependency
+
 ## Requirements
 
 - [Node.js](https://nodejs.org/) ≥ 18
