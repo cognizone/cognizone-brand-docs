@@ -1,6 +1,6 @@
 {
   "name": "@cognizone/brand-docs",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "description": "Cognizone branded document conversion (PDF, Word)",
   "type": "commonjs",
   "bin": {
