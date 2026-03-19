@@ -34,17 +34,18 @@ package.json              # npm package config
 
 ### PDF path (`render-pdf.js`)
 
-1. Configure `marked.use()` heading renderer with pre-computed section numbers
-2. `marked.parser(tokens)` → body HTML
+1. Configure `marked.use()` heading + code renderer with pre-computed section numbers
+2. `marked.parser(tokens)` → body HTML (mermaid blocks emit `<pre class="mermaid">` instead of `<pre><code>`)
 3. Assemble full HTML (cover + TOC + body)
-4. Render via Puppeteer (`templates/pdf-print.js`)
+4. Render via Puppeteer (`templates/pdf-print.js`) — mermaid.js is injected and runs before TOC page calculation
 
 ### DOCX path (`render-docx.js`)
 
-1. Walk token tree directly to build `docx` library objects (no HTML intermediate)
-2. Three sections: cover page (no header/footer) → TOC (native Word TOC field) → body
-3. Headers/footers with logo image + title / footer text + page numbers
-4. `Packer.toBuffer()` → write `.docx` file
+1. Pre-render mermaid blocks to PNG via Puppeteer (single browser session, one page per diagram)
+2. Walk token tree directly to build `docx` library objects (no HTML intermediate); mermaid blocks become `ImageRun` elements
+3. Three sections: cover page (no header/footer) → TOC (native Word TOC field) → body
+4. Headers/footers with logo image + title / footer text + page numbers
+5. `Packer.toBuffer()` → write `.docx` file
 
 Note: Word references fonts by name (can't embed TTFs). Roboto/Roboto Mono must be installed on the machine opening the file, or Word falls back to defaults.
 
@@ -52,12 +53,17 @@ Note: Word references fonts by name (can't embed TTFs). Roboto/Roboto Mono must 
 
 - Base64-encodes logo and Roboto font (external URLs/`@import` crash Puppeteer PDF printing)
 - Injects branded `headerTemplate` and `footerTemplate` (rendered in page margins on every page)
+- Forces `prefers-color-scheme: light` to prevent dark mode from affecting rendering
+- Injects mermaid.js and runs `mermaid.run()` to render diagrams as SVGs before layout
 - Uses `page.evaluate()` to calculate and inject page numbers into TOC before printing
 - `page.pdf()` with `margin: { top: 25mm, bottom: 20mm, left: 20mm, right: 20mm }`
 
 ## marked v13 renderer note
 
-`marked.use()` renderer overrides are **post-processors**: the function receives the already-rendered inner HTML string from the default renderer (not the token). To correlate with token data, use `walkTokens` to collect heading metadata in order, then match by index in the renderer override.
+`marked.use()` renderer overrides vary by element type:
+
+- **`heading(innerHtml)`** — receives already-rendered inner HTML (post-processor). To correlate with token data, use `walkTokens` to collect heading metadata in order, then match by index in the renderer override.
+- **`code(text, lang, escaped)`** — receives raw code text, language string, and escaped flag as separate arguments. Return HTML string directly.
 
 ## Document Frontmatter
 
@@ -128,6 +134,7 @@ H1 is stripped from body (used on cover page only). Body headings get section nu
 
 ### Elements
 
+- **Mermaid diagrams**: `` ```mermaid `` code blocks render as visual diagrams. PDF: client-side SVG via mermaid.js in Puppeteer. DOCX: pre-rendered to PNG via headless browser, embedded as images (max 500px wide). Uses `theme: 'neutral'`
 - **Code blocks**: Roboto Mono 8.5pt, `#188038` on `#f5f5f5`, green left border
 - **Inline code**: Roboto Mono 9pt, `#188038` on `#f5f5f5`
 - **Tables**: Green header row (white bold text, 9.5pt), alternating `#E8F5F3`/white body rows, `#BFBFBF` borders
@@ -159,6 +166,7 @@ Some intentional styling differences between formats:
 | Header/footer text | `#666666` (gray) | `#000000` (black) | Word renders 8pt differently; black ensures legibility, green border provides accent |
 | Cover page logo | No | Yes | DOCX cover is richer since it can't rely on CSS layout |
 | TOC | HTML with dot leaders + calculated page numbers | Native Word TOC field (updates on open) | Different capabilities per format |
+| Mermaid diagrams | Client-side SVG (mermaid.js in Puppeteer page) | Pre-rendered PNG screenshots embedded as images | DOCX can't run JS; PNG via headless browser |
 
 ## Markdown Authoring Rule
 

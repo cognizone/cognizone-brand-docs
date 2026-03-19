@@ -10,6 +10,7 @@ Works on macOS, Linux, and Windows — no bash or pandoc required.
 - **Branded cover page** with document ID, title, and metadata table
 - **Auto-generated table of contents** with section numbers and page references
 - **Branded headers and footers** with logo, document title, client/project info, and page numbers
+- **Mermaid diagrams** — `\`\`\`mermaid` code blocks render as visual diagrams (flowcharts, sequence diagrams, etc.)
 - **Full Markdown support** — headings, tables, lists (nested/mixed), code blocks, blockquotes, images, links, inline formatting
 - **HTML `<img>` tags** with width/height for precise image sizing
 - **YAML frontmatter** for document metadata (title, id, type, status, date, author, client, project)
