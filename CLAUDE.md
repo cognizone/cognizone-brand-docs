@@ -209,5 +209,5 @@ git tag vx.y.z
 git push origin main --tags
 ```
 
-The workflow (`.github/workflows/publish.yml`) runs automatically on any `v*` tag. It publishes to GitHub Packages and creates a GitHub Release with auto-generated notes.
+The workflow (`.github/workflows/publish.yml`) runs automatically on any `v*` tag. It publishes to GitHub Packages and creates a **draft** GitHub Release. After the workflow completes, edit the draft on the Releases page with hand-written notes (sections, descriptions) and publish it.
 
