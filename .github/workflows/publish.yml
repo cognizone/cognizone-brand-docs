@@ -34,9 +34,8 @@ jobs:
           if [ -n "$PREV_TAG" ]; then
             NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s" \
               | grep -v "^- chore: bump version")
-            NOTES="${NOTES}
-
-**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+            CHANGELOG_URL="https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+            NOTES=$(printf '%s\n\n%s' "$NOTES" "**Full Changelog**: ${CHANGELOG_URL}")
           else
             NOTES=$(git log --pretty=format:"- %s" | grep -v "^- chore: bump version")
           fi
