@@ -77,6 +77,48 @@ try {
   assert('pdf: generation succeeds', false, e.stderr?.toString() || e.message);
 }
 
+// ── Test ordered list numbering restarts ──────────────────────────────────────
+const multiListMd = path.join(OUT_DIR, 'multi-list.md');
+fs.writeFileSync(multiListMd, [
+  '---',
+  'title: Multi List Test',
+  '---',
+  '',
+  '## Section A',
+  '',
+  '1. Alpha',
+  '2. Beta',
+  '3. Gamma',
+  '',
+  '## Section B',
+  '',
+  '1. One',
+  '2. Two',
+  '3. Three',
+  '',
+].join('\n'));
+
+const multiListOut = path.join(OUT_DIR, 'multi-list.docx');
+try {
+  execFileSync(process.execPath, [CONVERT, multiListMd, multiListOut, '--format', 'docx'], { stdio: 'pipe' });
+  // DOCX is a ZIP — extract word/numbering.xml and verify each ordered list
+  // gets its own abstractNumId (not just different numId — Word ignores
+  // startOverride when multiple w:num share the same abstractNumId)
+  const numXml = execFileSync('unzip', ['-p', multiListOut, 'word/numbering.xml']).toString();
+  // Find all <w:num> entries and their abstractNumId references
+  const numEntries = [...numXml.matchAll(/<w:num w:numId="(\d+)"[^>]*>.*?<w:abstractNumId w:val="(\d+)"\/>/gs)];
+  // Filter to non-bullet entries (abstractNumId > 0 for ordered lists based on config order)
+  const abstractIds = numEntries.map(m => parseInt(m[2], 10));
+  // The two ordered lists should reference different abstract definitions
+  const uniqueAbstractIds = [...new Set(abstractIds)];
+  assert('docx: separate ordered lists get different abstractNumId',
+    uniqueAbstractIds.length >= 2,
+    `expected >=2 unique abstractNumIds, got ${uniqueAbstractIds.length}: [${uniqueAbstractIds.join(', ')}]`);
+} catch (e) {
+  assert('docx: separate ordered lists get different numId instances', false,
+    e.stderr?.toString() || e.message);
+}
+
 // ── Test missing frontmatter ─────────────────────────────────────────────────
 const minimalMd = path.join(OUT_DIR, 'minimal.md');
 fs.writeFileSync(minimalMd, '## Just a heading\n\nSome text.\n');

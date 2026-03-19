@@ -75,34 +75,52 @@ function collectMermaidBlocks(tokens) {
 }
 
 // ── Numbering definitions (bullets + ordered) ────────────────────────────────
-function buildNumberingConfig() {
+function orderedListLevels() {
+  const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  return LEVELS.map(level => ({
+    level,
+    format: level % 3 === 0 ? LevelFormat.DECIMAL : level % 3 === 1 ? LevelFormat.LOWER_LETTER : LevelFormat.LOWER_ROMAN,
+    text: `%${level + 1}.`,
+    alignment: AlignmentType.LEFT,
+    style: { paragraph: { indent: { left: convertMillimetersToTwip(5 * (level + 1)), hanging: convertMillimetersToTwip(3) } } },
+  }));
+}
+
+function buildNumberingConfig(orderedListCount) {
   // OOXML requires exactly 9 levels (0-8) per numbering definition
   const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
   const bulletChars = ['\u2022', '\u25E6', '\u2013']; // •, ◦, –
-  return {
-    config: [
-      {
-        reference: 'bullet-list',
-        levels: LEVELS.map(level => ({
-          level,
-          format: LevelFormat.BULLET,
-          text: bulletChars[level % 3],
-          alignment: AlignmentType.LEFT,
-          style: { paragraph: { indent: { left: convertMillimetersToTwip(5 * (level + 1)), hanging: convertMillimetersToTwip(3) } } },
-        })),
-      },
-      {
-        reference: 'ordered-list',
-        levels: LEVELS.map(level => ({
-          level,
-          format: level % 3 === 0 ? LevelFormat.DECIMAL : level % 3 === 1 ? LevelFormat.LOWER_LETTER : LevelFormat.LOWER_ROMAN,
-          text: `%${level + 1}.`,
-          alignment: AlignmentType.LEFT,
-          style: { paragraph: { indent: { left: convertMillimetersToTwip(5 * (level + 1)), hanging: convertMillimetersToTwip(3) } } },
-        })),
-      },
-    ],
-  };
+  const config = [
+    {
+      reference: 'bullet-list',
+      levels: LEVELS.map(level => ({
+        level,
+        format: LevelFormat.BULLET,
+        text: bulletChars[level % 3],
+        alignment: AlignmentType.LEFT,
+        style: { paragraph: { indent: { left: convertMillimetersToTwip(5 * (level + 1)), hanging: convertMillimetersToTwip(3) } } },
+      })),
+    },
+  ];
+  // Each ordered list gets its own abstract numbering definition so Word restarts from 1
+  const count = Math.max(1, orderedListCount || 1);
+  for (let i = 0; i < count; i++) {
+    config.push({ reference: `ordered-list-${i}`, levels: orderedListLevels() });
+  }
+  return { config };
+}
+
+function countOrderedLists(tokens) {
+  let count = 0;
+  for (const t of tokens) {
+    if (t.type === 'list' && t.ordered) count++;
+    if (t.items) {
+      for (const item of t.items) {
+        if (item.tokens) count += countOrderedLists(item.tokens);
+      }
+    }
+  }
+  return count;
 }
 
 // ── Inline token → TextRun conversion ────────────────────────────────────────
@@ -204,6 +222,8 @@ function inlineToRuns(tokens, ctx = {}) {
 }
 
 // ── Block token → Paragraph/Table conversion ─────────────────────────────────
+let _orderedListIndex = 0;
+
 function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
   const elements = [];
 
@@ -336,7 +356,9 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       }
 
       case 'list': {
-        const ref = token.ordered ? 'ordered-list' : 'bullet-list';
+        // Each ordered list gets its own abstract numbering definition (unique reference)
+        // so Word restarts numbering from 1 for each separate list
+        const ref = token.ordered ? `ordered-list-${_orderedListIndex++}` : 'bullet-list';
         for (const item of token.items) {
           elements.push(...listItemToElements(item, ref, listDepth, mermaidImages));
         }
@@ -452,7 +474,7 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
     for (let i = 1; i < item.tokens.length; i++) {
       const sub = item.tokens[i];
       if (sub.type === 'list') {
-        const subRef = sub.ordered ? 'ordered-list' : 'bullet-list';
+        const subRef = sub.ordered ? `ordered-list-${_orderedListIndex++}` : 'bullet-list';
         for (const subItem of sub.items) {
           elements.push(...listItemToElements(subItem, subRef, depth + 1, mermaidImages));
         }
@@ -684,6 +706,7 @@ const sectionProps = {
 async function renderDocx(parsed, outputFile) {
   const { headerTitle, footerTitle, inputDir, tokens, tocEntries } = parsed;
   _inputDir = inputDir || process.cwd();
+  _orderedListIndex = 0;
 
   // Cover page section (no header/footer — omit headers/footers entirely;
   // setting empty Header({children:[]}) poisons subsequent sections)
@@ -750,7 +773,7 @@ async function renderDocx(parsed, outputFile) {
 
   const doc = new Document({
     styles: buildStyles(),
-    numbering: buildNumberingConfig(),
+    numbering: buildNumberingConfig(countOrderedLists(tokens)),
     features: { updateFields: true },
     sections: [coverSection, tocSection, bodySection],
   });
