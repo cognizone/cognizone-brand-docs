@@ -112,6 +112,31 @@ Resized via HTML tag (100x21):
 
 <img src="sample-image.png" alt="Small logo" width="100" height="21">
 
+## Mermaid Diagrams
+
+### Flowchart
+
+```mermaid
+flowchart TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Action]
+    B -->|No| D[Other Action]
+    D --> B
+```
+
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI
+    participant Renderer
+    User->>CLI: cognizone-convert input.md
+    CLI->>Renderer: parse + render
+    Renderer-->>CLI: output file
+    CLI-->>User: Done!
+```
+
 ## Horizontal Rules
 
 Content above the rule.

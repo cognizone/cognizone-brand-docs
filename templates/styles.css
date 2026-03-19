@@ -135,6 +135,20 @@ pre code {
   border-radius: 0;
 }
 
+/* ── Mermaid diagrams ──────────────────────────────────────────────────────── */
+
+pre.mermaid {
+  background: none;
+  border-left: none;
+  padding: 16pt 0;
+  text-align: center;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
 /* ── Blockquote / callout ─────────────────────────────────────────────────── */
 
 blockquote {

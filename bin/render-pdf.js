@@ -55,12 +55,19 @@ function renderPdf(parsed, outputFile) {
   let headingRenderIdx = 0;
 
   marked.use({
-    walkTokens() { /* no-op: section numbers already computed in parse.js */ },
     renderer: {
       heading(innerHtml) {
         const entry = tocEntries[headingRenderIdx++];
         if (!entry) return `<h2>${innerHtml}</h2>\n`;
         return `<h${entry.level} id="${entry.id}"><span class="header-section-number">${entry.number}</span> ${innerHtml}</h${entry.level}>\n`;
+      },
+      code(text, lang) {
+        if (lang === 'mermaid') {
+          return `<pre class="mermaid">${text}</pre>\n`;
+        }
+        // Default code block rendering
+        const langClass = lang ? ` class="language-${lang}"` : '';
+        return `<pre><code${langClass}>${text}</code></pre>\n`;
       },
     },
   });
@@ -125,10 +132,13 @@ function renderPdf(parsed, outputFile) {
   const tmpHtml = path.join(os.tmpdir(), `cognizone-${Date.now()}.html`);
   fs.writeFileSync(tmpHtml, html, 'utf8');
 
+  // Resolve mermaid browser bundle path for Puppeteer injection
+  const mermaidJsPath = require.resolve('mermaid/dist/mermaid.min.js');
+
   try {
     execFileSync('node', [
       path.join(SCRIPT_DIR, 'templates', 'pdf-print.js'),
-      tmpHtml, outputFile, headerTitle, date, LOGO_PATH, footerTitle,
+      tmpHtml, outputFile, headerTitle, date, LOGO_PATH, footerTitle, mermaidJsPath,
     ], { stdio: 'inherit' });
   } finally {
     try { fs.unlinkSync(tmpHtml); } catch { /* ignore */ }

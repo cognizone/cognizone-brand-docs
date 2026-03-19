@@ -6,7 +6,7 @@ const { pathToFileURL } = require('url');
 const fs = require('fs');
 const path = require('path');
 
-const [,, htmlFile, outputPdf, title, date, logoPath, footerTitle] = process.argv;
+const [,, htmlFile, outputPdf, title, date, logoPath, footerTitle, mermaidJsPath] = process.argv;
 
 const GREEN = '#058775';
 const GRAY  = '#666666';
@@ -59,6 +59,19 @@ const footerTemplate = `
   const page = await browser.newPage();
 
   await page.goto(pathToFileURL(htmlFile).href, { waitUntil: 'networkidle0' });
+
+  // Force light color scheme so mermaid diagrams don't pick up dark mode
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+
+  // Render mermaid diagrams (if any) before TOC page-number calculation
+  const hasMermaid = await page.evaluate(() => document.querySelectorAll('pre.mermaid').length > 0);
+  if (hasMermaid && mermaidJsPath) {
+    await page.addScriptTag({ path: mermaidJsPath });
+    await page.evaluate(async () => {
+      mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+      await mermaid.run();
+    });
+  }
 
   // Inject page numbers into TOC entries
   await page.evaluate(() => {

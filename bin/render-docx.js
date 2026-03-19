@@ -2,6 +2,7 @@
 // DOCX renderer: takes parsed markdown data, produces a branded Word document.
 
 const docx = require('docx');
+const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
@@ -38,6 +39,40 @@ const MARGIN_BOTTOM = convertMillimetersToTwip(20);
 const MARGIN_SIDE   = convertMillimetersToTwip(20);
 // Usable width in twips (A4 = 210mm, minus 20mm each side = 170mm)
 const CONTENT_WIDTH_TWIP = convertMillimetersToTwip(170);
+
+// ── Mermaid rendering ────────────────────────────────────────────────────────
+const MERMAID_JS_PATH = require.resolve('mermaid/dist/mermaid.min.js');
+
+async function renderMermaidToPng(browser, code) {
+  const page = await browser.newPage();
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  await page.setContent('<html><body style="background:#fff"><pre class="mermaid"></pre></body></html>');
+  await page.addScriptTag({ path: MERMAID_JS_PATH });
+  await page.evaluate(async (src) => {
+    document.querySelector('.mermaid').textContent = src;
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+    await mermaid.run();
+  }, code);
+  const svgEl = await page.$('.mermaid svg');
+  const box = await svgEl.boundingBox();
+  const pngBuffer = await svgEl.screenshot({ type: 'png' });
+  await page.close();
+  return { buffer: pngBuffer, width: Math.round(box.width), height: Math.round(box.height) };
+}
+
+function collectMermaidBlocks(tokens) {
+  const blocks = [];
+  for (const t of tokens) {
+    if (t.type === 'code' && t.lang === 'mermaid') blocks.push(t.text);
+    if (t.tokens) blocks.push(...collectMermaidBlocks(t.tokens));
+    if (t.items) {
+      for (const item of t.items) {
+        if (item.tokens) blocks.push(...collectMermaidBlocks(item.tokens));
+      }
+    }
+  }
+  return blocks;
+}
 
 // ── Numbering definitions (bullets + ordered) ────────────────────────────────
 function buildNumberingConfig() {
@@ -169,7 +204,7 @@ function inlineToRuns(tokens, ctx = {}) {
 }
 
 // ── Block token → Paragraph/Table conversion ─────────────────────────────────
-function tokensToElements(tokens, listDepth = 0) {
+function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
   const elements = [];
 
   for (const token of tokens) {
@@ -220,6 +255,21 @@ function tokensToElements(tokens, listDepth = 0) {
         break;
 
       case 'code': {
+        // Mermaid diagrams → render as image
+        if (token.lang === 'mermaid' && mermaidImages.has(token.text)) {
+          const { buffer, width, height } = mermaidImages.get(token.text);
+          const scale = Math.min(1, 500 / width);
+          elements.push(new Paragraph({
+            children: [new ImageRun({
+              type: 'png',
+              data: buffer,
+              transformation: { width: Math.round(width * scale), height: Math.round(height * scale) },
+            })],
+            alignment: AlignmentType.CENTER,
+            spacing: { before: 120, after: 120 },
+          }));
+          break;
+        }
         // Code block as single-cell table with green left border + gray bg
         const codeLines = token.text.split('\n');
         elements.push(new Table({
@@ -259,7 +309,7 @@ function tokensToElements(tokens, listDepth = 0) {
       case 'blockquote': {
         // Render blockquote children with italic style and green left border
         const bqChildren = token.tokens
-          ? tokensToElements(token.tokens)
+          ? tokensToElements(token.tokens, 0, mermaidImages)
           : [new Paragraph({ children: [new TextRun({ text: token.raw || '' })] })];
 
         // Wrap each child paragraph with blockquote styling
@@ -288,7 +338,7 @@ function tokensToElements(tokens, listDepth = 0) {
       case 'list': {
         const ref = token.ordered ? 'ordered-list' : 'bullet-list';
         for (const item of token.items) {
-          elements.push(...listItemToElements(item, ref, listDepth));
+          elements.push(...listItemToElements(item, ref, listDepth, mermaidImages));
         }
         break;
       }
@@ -383,7 +433,7 @@ function tokensToElements(tokens, listDepth = 0) {
   return elements;
 }
 
-function listItemToElements(item, ref, depth) {
+function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
   const elements = [];
 
   // First paragraph in the list item gets the numbering
@@ -404,10 +454,10 @@ function listItemToElements(item, ref, depth) {
       if (sub.type === 'list') {
         const subRef = sub.ordered ? 'ordered-list' : 'bullet-list';
         for (const subItem of sub.items) {
-          elements.push(...listItemToElements(subItem, subRef, depth + 1));
+          elements.push(...listItemToElements(subItem, subRef, depth + 1, mermaidImages));
         }
       } else {
-        elements.push(...tokensToElements([sub], depth));
+        elements.push(...tokensToElements([sub], depth, mermaidImages));
       }
     }
   }
@@ -673,8 +723,21 @@ async function renderDocx(parsed, outputFile) {
     ],
   };
 
+  // Pre-render mermaid diagrams to PNG
+  const mermaidImages = new Map();
+  const mermaidCodes = collectMermaidBlocks(tokens);
+  if (mermaidCodes.length > 0) {
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+    for (const code of mermaidCodes) {
+      if (!mermaidImages.has(code)) {
+        mermaidImages.set(code, await renderMermaidToPng(browser, code));
+      }
+    }
+    await browser.close();
+  }
+
   // Body section
-  const bodyElements = tokensToElements(tokens);
+  const bodyElements = tokensToElements(tokens, 0, mermaidImages);
   const bodySection = {
     properties: {
       ...sectionProps,
