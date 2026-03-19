@@ -27,6 +27,19 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
-        run: gh release create "${{ github.ref_name }}" --generate-notes
+        run: |
+          TAG="${{ github.ref_name }}"
+          # Find the previous tag to generate changelog from
+          PREV_TAG=$(git tag --sort=-v:refname | grep -v "^${TAG}$" | head -1)
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log "${PREV_TAG}..${TAG}" --pretty=format:"- %s" \
+              | grep -v "^- chore: bump version")
+            NOTES="${NOTES}
+
+**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...${TAG}"
+          else
+            NOTES=$(git log --pretty=format:"- %s" | grep -v "^- chore: bump version")
+          fi
+          gh release create "$TAG" --title "$TAG" --notes "$NOTES"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
