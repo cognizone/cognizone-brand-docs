@@ -209,5 +209,5 @@ git tag vx.y.z
 git push origin main --tags
 ```
 
-The workflow (`.github/workflows/publish.yml`) runs automatically on any `v*` tag.
+The workflow (`.github/workflows/publish.yml`) runs automatically on any `v*` tag. It publishes to GitHub Packages and creates a GitHub Release with auto-generated notes.
 

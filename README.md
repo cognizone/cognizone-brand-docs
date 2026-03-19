@@ -77,6 +77,10 @@ PDF output with Cognizone brand styling:
 
 ![Table of contents](docs/screenshots/table-of-contents.png)
 
+### Mermaid diagrams
+
+![Mermaid diagram](docs/screenshots/mermaid-diagram.png)
+
 ### Body content
 
 ![Body content](docs/screenshots/body-content.png)
