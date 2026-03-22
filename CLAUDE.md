@@ -8,6 +8,8 @@ This is the **Cognizone branded document conversion** package (`@cognizone/brand
 
 Published to GitHub Packages. Installed via Git URL: `npm install -g cognizone/cognizone-brand-docs`. CLI command: `cognizone-convert`.
 
+Supports single-file conversion (PDF or DOCX) and folder merge (all `.md` files → single PDF).
+
 ## Repo Structure
 
 ```
@@ -31,6 +33,22 @@ package.json              # npm package config
 
 1. **Parse** (`parse.js`) — `gray-matter` extracts frontmatter; `marked.lexer()` produces token tree; walks tokens to compute section numbers + TOC entries
 2. **Route** — based on `--format` flag, delegates to `render-pdf.js` or `render-docx.js`
+
+### Folder merge path (PDF only)
+
+When the input is a directory, `convert.js` recursively finds all `.md` files (sorted alphabetically), parses each one, and calls `renderMergedPdf()` in `render-pdf.js`. This produces a single PDF:
+
+1. **Master cover page** — folder name as title, table listing all documents (number, ID, title)
+2. **Master TOC** — single table of contents; each document is a top-level entry with its headings nested below
+3. **Per-document sections** — each document gets its own cover page (from its frontmatter) followed by its body content
+
+Key details:
+
+- Section numbering resets per document
+- Heading IDs are prefixed with `doc-{index}-` to avoid collisions across documents
+- Relative image paths are resolved to absolute `file://` URLs per document (no `<base href>`)
+- Header shows the folder name; footer is empty (Puppeteer only supports one static header/footer template)
+- DOCX merge is not supported — folder input errors if `--format docx` is requested
 
 ### PDF path (`render-pdf.js`)
 
@@ -194,6 +212,19 @@ npm install -g cognizone/cognizone-brand-docs
 ```
 
 To update, run the same command again.
+
+### Usage
+
+```bash
+# Single file
+cognizone-convert document.md                    # → document.pdf
+cognizone-convert document.md --format docx      # → document.docx
+cognizone-convert document.md output.pdf         # custom output path
+
+# Folder merge (PDF only)
+cognizone-convert docs/                          # → docs.pdf in CWD
+cognizone-convert docs/ merged-output.pdf        # custom output path
+```
 
 ## Publishing
 

@@ -145,4 +145,175 @@ function renderPdf(parsed, outputFile) {
   }
 }
 
-module.exports = { renderPdf };
+// ── Merged PDF (folder input) ────────────────────────────────────────────────
+
+function resolveImagePaths(html, inputDir) {
+  return html.replace(
+    /(<img\s[^>]*src=")(?!data:|https?:|file:)([^"]+)(")/gi,
+    (_m, pre, src, post) => {
+      const abs = pathToFileURL(path.resolve(inputDir, src)).href;
+      return pre + abs + post;
+    },
+  );
+}
+
+function buildCoverHtml(doc) {
+  const { title, id, type, status, date, author, client, project } = doc;
+  const metaRows = [
+    ['ID',             id],
+    ['Document title', title],
+    ['Type',           type],
+    ['Date',           date],
+    ['Status',         status],
+    ['Author',         author],
+    ['Client',         client],
+    ['Project',        project],
+  ].filter(([, v]) => v)
+   .map(([l, v]) => `<tr><td class="meta-label">${l}</td><td>${v}</td></tr>`)
+   .join('\n      ');
+
+  return `<div class="cover-page">
+    <div class="cover-contact">
+      <a href="mailto:info@cogni.zone">info@cogni.zone</a>
+      <a href="https://cogni.zone">cogni.zone</a>
+    </div>
+    ${id ? `<p class="cover-id">${id}</p>` : ''}
+    <h1 class="cover-title">${title}</h1>
+    <table class="cover-meta-table">
+      ${metaRows}
+    </table>
+  </div>`;
+}
+
+function renderMergedPdf(parsedDocs, folderPath, outputFile) {
+  const folderName = path.basename(folderPath);
+
+  // ── Build master TOC entries ───────────────────────────────────────────────
+  const masterTocEntries = [];
+  parsedDocs.forEach((doc, i) => {
+    masterTocEntries.push({
+      level: 2,
+      text: doc.title,
+      id: `doc-${i}`,
+      number: `${i + 1}`,
+    });
+    for (const e of doc.tocEntries) {
+      masterTocEntries.push({
+        level: e.level + 1,   // nest under the document title entry
+        text: e.text,
+        id: `doc-${i}-${e.id}`,
+        number: `${i + 1}.${e.number}`,
+      });
+    }
+  });
+
+  // ── Render each document's body HTML ───────────────────────────────────────
+  // We need one flat tocEntries array to correlate with the heading renderer.
+  // The heading renderer uses a global index, so we render documents in order.
+  const allPrefixedEntries = [];
+  parsedDocs.forEach((doc, i) => {
+    for (const e of doc.tocEntries) {
+      allPrefixedEntries.push({
+        level: e.level,
+        text: e.text,
+        id: `doc-${i}-${e.id}`,
+        number: e.number,
+      });
+    }
+  });
+
+  let headingRenderIdx = 0;
+
+  marked.use({
+    renderer: {
+      heading(innerHtml) {
+        const entry = allPrefixedEntries[headingRenderIdx++];
+        if (!entry) return `<h2>${innerHtml}</h2>\n`;
+        return `<h${entry.level} id="${entry.id}"><span class="header-section-number">${entry.number}</span> ${innerHtml}</h${entry.level}>\n`;
+      },
+      code(text, lang) {
+        if (lang === 'mermaid') {
+          return `<pre class="mermaid">${text}</pre>\n`;
+        }
+        const langClass = lang ? ` class="language-${lang}"` : '';
+        return `<pre><code${langClass}>${text}</code></pre>\n`;
+      },
+    },
+  });
+
+  const docSections = parsedDocs.map((doc, i) => {
+    const bodyHtml = resolveImagePaths(marked(doc.mdNoH1), doc.inputDir);
+    const cover = buildCoverHtml(doc);
+    return `
+  <div class="page-break"></div>
+  <div id="doc-${i}">
+    ${cover}
+  </div>
+  <div class="page-break"></div>
+  <div class="document-body">
+    ${bodyHtml}
+  </div>`;
+  }).join('\n');
+
+  // ── Master cover page ────────────────────────────────────────────────────
+  const docListRows = parsedDocs.map((doc, i) => {
+    const num = i + 1;
+    return `<tr><td class="meta-label">${num}</td><td>${doc.id ? `${doc.id} — ` : ''}${doc.title}</td></tr>`;
+  }).join('\n      ');
+
+  const masterCover = `<div class="cover-page">
+    <div class="cover-contact">
+      <a href="mailto:info@cogni.zone">info@cogni.zone</a>
+      <a href="https://cogni.zone">cogni.zone</a>
+    </div>
+    <h1 class="cover-title">${folderName}</h1>
+    <table class="cover-meta-table">
+      ${docListRows}
+    </table>
+  </div>`;
+
+  // ── Assemble full HTML ───────────────────────────────────────────────────
+  const cssUrl = pathToFileURL(CSS_PATH).href;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="${cssUrl}">
+</head>
+<body>
+
+  ${masterCover}
+
+  <div class="page-break"></div>
+
+  <div class="document-body toc-page">
+    <h2 class="toc-heading">Contents</h2>
+    ${buildToc(masterTocEntries)}
+  </div>
+
+  ${docSections}
+
+</body>
+</html>`;
+
+  // ── Render PDF ─────────────────────────────────────────────────────────────
+  const tmpHtml = path.join(os.tmpdir(), `cognizone-merged-${Date.now()}.html`);
+  fs.writeFileSync(tmpHtml, html, 'utf8');
+
+  const mermaidJsPath = require.resolve('mermaid/dist/mermaid.min.js');
+
+  const headerTitle = folderName;
+  const footerTitle = '';
+
+  try {
+    execFileSync('node', [
+      path.join(SCRIPT_DIR, 'templates', 'pdf-print.js'),
+      tmpHtml, outputFile, headerTitle, '', LOGO_PATH, footerTitle, mermaidJsPath,
+    ], { stdio: 'inherit' });
+  } finally {
+    try { fs.unlinkSync(tmpHtml); } catch { /* ignore */ }
+  }
+}
+
+module.exports = { renderPdf, renderMergedPdf };

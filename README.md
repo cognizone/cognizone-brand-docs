@@ -7,6 +7,7 @@ Works on macOS, Linux, and Windows — no bash or pandoc required.
 ## Features
 
 - **PDF and Word output** from a single Markdown source
+- **Folder merge** — pass a folder to combine all Markdown files into a single PDF with a master cover page and TOC
 - **Branded cover page** with document ID, title, and metadata table
 - **Auto-generated table of contents** with section numbers and page references
 - **Branded headers and footers** with logo, document title, client/project info, and page numbers
@@ -36,6 +37,10 @@ cognizone-convert document.md                        # converts to PDF (default)
 cognizone-convert document.md --format docx          # converts to Word
 cognizone-convert document.md -f docx                # short form
 cognizone-convert document.md output/custom-name.pdf # custom output path
+
+# Folder merge (PDF only)
+cognizone-convert docs/                              # merges all .md files → docs.pdf
+cognizone-convert docs/ merged-output.pdf            # custom output path
 ```
 
 > **Note (Word output):** Word documents reference fonts by name. For correct rendering, install [Roboto](https://fonts.google.com/specimen/Roboto) and [Roboto Mono](https://fonts.google.com/specimen/Roboto+Mono) on the machine opening the `.docx` file.
