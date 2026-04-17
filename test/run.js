@@ -85,6 +85,28 @@ assert('parse: title extracted', parsed.title === 'Test Document: All Formatting
 assert('parse: id extracted', parsed.id === 'TEST-001');
 assert('parse: date formatted as YYYY-MM-DD', parsed.date === '2026-03-12');
 assert('parse: version extracted', parsed.version === '1.2');
+
+// ── Test: YAML-numeric version preserves formatting (1.0 does not become 1) ──
+{
+  const versionNumericMd = path.join(OUT_DIR, 'version-numeric.md');
+  fs.writeFileSync(versionNumericMd, '---\ntitle: V\nversion: 1.0\n---\n\n## X\n');
+  const v = parseMarkdown(versionNumericMd);
+  assert('parse: unquoted version 1.0 preserves trailing zero', v.version === '1.0',
+    `got "${v.version}"`);
+}
+{
+  const versionQuotedMd = path.join(OUT_DIR, 'version-quoted.md');
+  fs.writeFileSync(versionQuotedMd, '---\ntitle: V\nversion: "2.0"\n---\n\n## X\n');
+  const v = parseMarkdown(versionQuotedMd);
+  assert('parse: quoted version strips quotes', v.version === '2.0',
+    `got "${v.version}"`);
+}
+{
+  const versionMissingMd = path.join(OUT_DIR, 'version-missing.md');
+  fs.writeFileSync(versionMissingMd, '---\ntitle: V\n---\n\n## X\n');
+  const v = parseMarkdown(versionMissingMd);
+  assert('parse: missing version yields empty string', v.version === '');
+}
 assert('parse: author extracted', parsed.author === 'Cognizone');
 assert('parse: client extracted', parsed.client === 'ERA \u2014 European Union Agency for Railways');
 assert('parse: project extracted', parsed.project === 'REG+');

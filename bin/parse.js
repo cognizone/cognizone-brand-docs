@@ -12,14 +12,29 @@ function slugify(text) {
     .replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
 }
 
+// Read a top-level scalar from the raw YAML block, preserving exact formatting
+// (YAML parses `1.0` as the number 1, losing the trailing zero — the raw text retains it).
+function rawFrontmatterValue(rawMatter, key) {
+  const re = new RegExp(`^${key}:\\s*(.*?)\\s*$`, 'm');
+  const m = String(rawMatter || '').match(re);
+  if (!m) return null;
+  let v = m[1];
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    v = v.slice(1, -1);
+  }
+  return v;
+}
+
 function parseMarkdown(inputFile) {
-  const { data: fm, content: mdBody } = matter(fs.readFileSync(inputFile, 'utf8'));
+  const parsedMatter = matter(fs.readFileSync(inputFile, 'utf8'));
+  const { data: fm, content: mdBody } = parsedMatter;
+  const rawMatter = parsedMatter.matter;
 
   const title       = String(fm.title  || path.basename(inputFile, '.md'));
   const id          = String(fm.id     || '');
   const type        = String(fm.type   || '');
   const status      = String(fm.status || '');
-  const version     = String(fm.version || '');
+  const version     = rawFrontmatterValue(rawMatter, 'version') ?? String(fm.version || '');
   const date        = fm.date instanceof Date ? fm.date.toISOString().slice(0, 10) : fm.date ? String(fm.date) : '';
   const author      = String(fm.author  || '');
   const client      = String(fm.client  || '');
