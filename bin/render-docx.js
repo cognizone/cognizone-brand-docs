@@ -30,6 +30,16 @@ const WHITE         = 'FFFFFF';
 const FONT_BODY = 'Roboto';
 const FONT_MONO = 'Roboto Mono';
 
+// marked.lexer() escapes HTML entities in code token text; unescape for DOCX output.
+function unescapeHtml(s) {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 const SCRIPT_DIR = path.join(__dirname, '..');
 const LOGO_PATH  = path.join(SCRIPT_DIR, 'templates', 'logo.png');
 
@@ -164,7 +174,7 @@ function inlineToRuns(tokens, ctx = {}) {
         break;
       case 'codespan':
         runs.push(new TextRun({
-          text: t.text,
+          text: unescapeHtml(t.text),
           font: FONT_MONO,
           size: 18,
           color: MONO_GREEN,
@@ -291,7 +301,7 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
           break;
         }
         // Code block as single-cell table with green left border + gray bg
-        const codeLines = token.text.split('\n');
+        const codeLines = unescapeHtml(token.text).split('\n');
         elements.push(new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
           rows: [
