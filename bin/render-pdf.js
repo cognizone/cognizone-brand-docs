@@ -56,7 +56,7 @@ function buildToc(entries) {
 }
 
 function renderPdf(parsed, outputFile) {
-  const { title, id, type, status, date, author, client, project, headerTitle, footerTitle, inputDir, tocEntries, mdNoH1 } = parsed;
+  const { title, id, type, status, version, date, author, client, project, headerTitle, footerTitle, inputDir, tocEntries, mdNoH1 } = parsed;
 
   // ── Render body HTML with section numbers ──────────────────────────────────
   // In marked v13, renderer overrides are post-processors: the function
@@ -91,6 +91,7 @@ function renderPdf(parsed, outputFile) {
     ['Type',           type],
     ['Date',           date],
     ['Status',         status],
+    ['Version',        version],
     ['Author',         author],
     ['Client',         client],
     ['Project',        project],
@@ -168,13 +169,14 @@ function resolveImagePaths(html, inputDir) {
 }
 
 function buildCoverHtml(doc) {
-  const { title, id, type, status, date, author, client, project } = doc;
+  const { title, id, type, status, version, date, author, client, project } = doc;
   const metaRows = [
     ['ID',             id],
     ['Document title', title],
     ['Type',           type],
     ['Date',           date],
     ['Status',         status],
+    ['Version',        version],
     ['Author',         author],
     ['Client',         client],
     ['Project',        project],

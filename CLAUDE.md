@@ -93,6 +93,7 @@ title: "Document Title"
 id: ADR-001
 type: adr            # adr | spec | report | ...
 status: draft
+version: "1.0"
 date: 2025-01-01
 author: Cognizone
 client: "ERA — European Union Agency for Railways"
@@ -108,6 +109,7 @@ All fields are optional. How each field is used:
 | `id` | Green eyebrow above title + table row | `{id} - {title}` | — |
 | `type` | Table row | — | — |
 | `status` | Table row | — | — |
+| `version` | Table row | — | — |
 | `date` | Table row | — | — |
 | `author` | Table row | — | — |
 | `client` | Table row | — | `{client} · {project}` |

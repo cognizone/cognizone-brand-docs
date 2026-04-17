@@ -62,7 +62,7 @@ project: REG+
 ---
 ```
 
-All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `date`, `author`, `client`, `project`.
+All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`.
 
 ## Sizing mermaid diagrams
 

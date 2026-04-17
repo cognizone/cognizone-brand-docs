@@ -19,6 +19,7 @@ function parseMarkdown(inputFile) {
   const id          = String(fm.id     || '');
   const type        = String(fm.type   || '');
   const status      = String(fm.status || '');
+  const version     = String(fm.version || '');
   const date        = fm.date instanceof Date ? fm.date.toISOString().slice(0, 10) : fm.date ? String(fm.date) : '';
   const author      = String(fm.author  || '');
   const client      = String(fm.client  || '');
@@ -66,7 +67,7 @@ function parseMarkdown(inputFile) {
   walkHeadings(tokens);
 
   return {
-    fm, title, id, type, status, date, author, client, project, headerTitle, footerTitle,
+    fm, title, id, type, status, version, date, author, client, project, headerTitle, footerTitle,
     inputDir: path.dirname(inputFile), tokens, tocEntries, mdNoH1,
   };
 }

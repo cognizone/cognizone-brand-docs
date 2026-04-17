@@ -84,6 +84,7 @@ const parsed = parseMarkdown(FIXTURE);
 assert('parse: title extracted', parsed.title === 'Test Document: All Formatting Features');
 assert('parse: id extracted', parsed.id === 'TEST-001');
 assert('parse: date formatted as YYYY-MM-DD', parsed.date === '2026-03-12');
+assert('parse: version extracted', parsed.version === '1.2');
 assert('parse: author extracted', parsed.author === 'Cognizone');
 assert('parse: client extracted', parsed.client === 'ERA \u2014 European Union Agency for Railways');
 assert('parse: project extracted', parsed.project === 'REG+');

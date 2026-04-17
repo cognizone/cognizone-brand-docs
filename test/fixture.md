@@ -3,6 +3,7 @@ title: "Test Document: All Formatting Features"
 id: TEST-001
 type: spec
 status: draft
+version: "1.2"
 date: 2026-03-12
 author: Cognizone
 client: "ERA — European Union Agency for Railways"

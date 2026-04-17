@@ -553,7 +553,7 @@ function buildFooter(footerTitle) {
 
 // ── Cover page ───────────────────────────────────────────────────────────────
 function buildCoverPage(parsed) {
-  const { title, id, type, status, date, author, client, project } = parsed;
+  const { title, id, type, status, version, date, author, client, project } = parsed;
   const children = [];
 
   // Logo (left) + email (right)
@@ -621,6 +621,7 @@ function buildCoverPage(parsed) {
     ['Type',           type],
     ['Date',           date],
     ['Status',         status],
+    ['Version',        version],
     ['Author',         author],
     ['Client',         client],
     ['Project',        project],
