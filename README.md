@@ -64,6 +64,24 @@ project: REG+
 
 All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `date`, `author`, `client`, `project`.
 
+## Sizing mermaid diagrams
+
+Add options to the fence line to control per-diagram width and alignment. Applies to both PDF and DOCX output.
+
+````markdown
+```mermaid maxWidth=300 align=left
+flowchart LR
+  A --> B
+```
+````
+
+| Option | Values | Default | Effect |
+|---|---|---|---|
+| `maxWidth` | integer pixels | `500` | Upper bound on rendered width; height scales proportionally |
+| `align` | `left`, `center`, `right` | `center` | Paragraph alignment of the diagram |
+
+Unknown or invalid values are ignored with a warning on stderr; the diagram still renders with defaults.
+
 ## Output preview
 
 Sample outputs generated from the [test fixture](test/fixture.md): [PDF](test/output/fixture.pdf) | [Word](test/output/fixture.docx)

@@ -137,6 +137,13 @@ sequenceDiagram
     CLI-->>User: Done!
 ```
 
+### Sized Diagram
+
+```mermaid maxWidth=200 align=left
+graph LR
+    X --> Y
+```
+
 ## Horizontal Rules
 
 Content above the rule.

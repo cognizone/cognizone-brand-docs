@@ -7,6 +7,16 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
+const { parseMermaidOpts } = require('./mermaid-opts');
+
+function mermaidWrapHtml(text, info) {
+  const opts = parseMermaidOpts(info || '');
+  const marginCss =
+    opts.align === 'left'  ? '0 auto 0 0' :
+    opts.align === 'right' ? '0 0 0 auto' :
+                             '0 auto';
+  return `<div class="mermaid-wrap" style="max-width:${opts.maxWidth}px;margin:${marginCss};"><pre class="mermaid">${text}</pre></div>\n`;
+}
 
 const SCRIPT_DIR = path.join(__dirname, '..');
 const CSS_PATH   = path.join(SCRIPT_DIR, 'templates', 'styles.css');
@@ -62,8 +72,8 @@ function renderPdf(parsed, outputFile) {
         return `<h${entry.level} id="${entry.id}"><span class="header-section-number">${entry.number}</span> ${innerHtml}</h${entry.level}>\n`;
       },
       code(text, lang) {
-        if (lang === 'mermaid') {
-          return `<pre class="mermaid">${text}</pre>\n`;
+        if (parseMermaidOpts(lang || '').isMermaid) {
+          return mermaidWrapHtml(text, lang);
         }
         // Default code block rendering
         const langClass = lang ? ` class="language-${lang}"` : '';
@@ -232,8 +242,8 @@ function renderMergedPdf(parsedDocs, folderPath, outputFile) {
         return `<h${entry.level} id="${entry.id}"><span class="header-section-number">${entry.number}</span> ${innerHtml}</h${entry.level}>\n`;
       },
       code(text, lang) {
-        if (lang === 'mermaid') {
-          return `<pre class="mermaid">${text}</pre>\n`;
+        if (parseMermaidOpts(lang || '').isMermaid) {
+          return mermaidWrapHtml(text, lang);
         }
         const langClass = lang ? ` class="language-${lang}"` : '';
         return `<pre><code${langClass}>${text}</code></pre>\n`;

@@ -5,6 +5,7 @@ const docx = require('docx');
 const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
+const { parseMermaidOpts } = require('./mermaid-opts');
 
 const {
   Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun,
@@ -53,6 +54,12 @@ const CONTENT_WIDTH_TWIP = convertMillimetersToTwip(170);
 // ── Mermaid rendering ────────────────────────────────────────────────────────
 const MERMAID_JS_PATH = require.resolve('mermaid/dist/mermaid.min.js');
 
+const DOCX_ALIGN = {
+  left: AlignmentType.LEFT,
+  center: AlignmentType.CENTER,
+  right: AlignmentType.RIGHT,
+};
+
 async function renderMermaidToPng(browser, code) {
   const page = await browser.newPage();
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
@@ -73,7 +80,7 @@ async function renderMermaidToPng(browser, code) {
 function collectMermaidBlocks(tokens) {
   const blocks = [];
   for (const t of tokens) {
-    if (t.type === 'code' && t.lang === 'mermaid') blocks.push(t.text);
+    if (t.type === 'code' && parseMermaidOpts(t.lang || '').isMermaid) blocks.push(t.text);
     if (t.tokens) blocks.push(...collectMermaidBlocks(t.tokens));
     if (t.items) {
       for (const item of t.items) {
@@ -286,16 +293,17 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
 
       case 'code': {
         // Mermaid diagrams → render as image
-        if (token.lang === 'mermaid' && mermaidImages.has(token.text)) {
+        const mermaidOpts = parseMermaidOpts(token.lang || '');
+        if (mermaidOpts.isMermaid && mermaidImages.has(token.text)) {
           const { buffer, width, height } = mermaidImages.get(token.text);
-          const scale = Math.min(1, 500 / width);
+          const scale = Math.min(1, mermaidOpts.maxWidth / width);
           elements.push(new Paragraph({
             children: [new ImageRun({
               type: 'png',
               data: buffer,
               transformation: { width: Math.round(width * scale), height: Math.round(height * scale) },
             })],
-            alignment: AlignmentType.CENTER,
+            alignment: DOCX_ALIGN[mermaidOpts.align],
             spacing: { before: 120, after: 120 },
           }));
           break;

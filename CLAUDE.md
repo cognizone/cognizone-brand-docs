@@ -152,7 +152,7 @@ H1 is stripped from body (used on cover page only). Body headings get section nu
 
 ### Elements
 
-- **Mermaid diagrams**: `` ```mermaid `` code blocks render as visual diagrams. PDF: client-side SVG via mermaid.js in Puppeteer. DOCX: pre-rendered to PNG via headless browser, embedded as images (max 500px wide). Uses `theme: 'neutral'`
+- **Mermaid diagrams**: `` ```mermaid `` code blocks render as visual diagrams. PDF: client-side SVG via mermaid.js in Puppeteer. DOCX: pre-rendered to PNG via headless browser, embedded as images. Uses `theme: 'neutral'`. Per-diagram sizing via fence options: `` ```mermaid maxWidth=300 align=left `` — keys `maxWidth` (pixels, default 500) and `align` (`left`/`center`/`right`, default `center`). Parsed by `bin/mermaid-opts.js`; invalid values warn to stderr and fall back to defaults
 - **Code blocks**: Roboto Mono 8.5pt, `#188038` on `#f5f5f5`, green left border
 - **Inline code**: Roboto Mono 9pt, `#188038` on `#f5f5f5`
 - **Tables**: Green header row (white bold text, 9.5pt), alternating `#E8F5F3`/white body rows, `#BFBFBF` borders

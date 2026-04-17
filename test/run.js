@@ -28,6 +28,55 @@ function assert(name, condition, detail) {
   }
 }
 
+// ── Test mermaid-opts parser ─────────────────────────────────────────────────
+const { parseMermaidOpts } = require('../bin/mermaid-opts');
+
+// Silence expected warnings from invalid-option cases below
+const _origWarn = console.warn;
+console.warn = () => {};
+
+{
+  const r = parseMermaidOpts('mermaid');
+  assert('mermaid-opts: bare mermaid is mermaid', r.isMermaid === true);
+  assert('mermaid-opts: default maxWidth 500', r.maxWidth === 500);
+  assert('mermaid-opts: default align center', r.align === 'center');
+}
+{
+  const r = parseMermaidOpts('mermaid maxWidth=300');
+  assert('mermaid-opts: maxWidth parsed', r.maxWidth === 300);
+  assert('mermaid-opts: align stays default', r.align === 'center');
+}
+{
+  const r = parseMermaidOpts('mermaid align=left');
+  assert('mermaid-opts: align=left parsed', r.align === 'left');
+}
+{
+  const r = parseMermaidOpts('mermaid maxWidth=250 align=right');
+  assert('mermaid-opts: both opts parsed', r.maxWidth === 250 && r.align === 'right');
+}
+{
+  const r = parseMermaidOpts('javascript');
+  assert('mermaid-opts: non-mermaid lang rejected', r.isMermaid === false);
+}
+{
+  const r = parseMermaidOpts('');
+  assert('mermaid-opts: empty lang rejected', r.isMermaid === false);
+}
+{
+  const r = parseMermaidOpts('mermaid maxWidth=abc');
+  assert('mermaid-opts: invalid maxWidth falls back', r.isMermaid === true && r.maxWidth === 500);
+}
+{
+  const r = parseMermaidOpts('mermaid align=middle');
+  assert('mermaid-opts: invalid align falls back', r.align === 'center');
+}
+{
+  const r = parseMermaidOpts('mermaid bogus=1');
+  assert('mermaid-opts: unknown key ignored, still mermaid', r.isMermaid === true);
+}
+
+console.warn = _origWarn;
+
 // ── Test parse.js ────────────────────────────────────────────────────────────
 const { parseMarkdown } = require('../bin/parse');
 const parsed = parseMarkdown(FIXTURE);
@@ -61,6 +110,33 @@ try {
   assert('docx: file is non-trivial (>10KB)', docxSize > 10000, `size: ${docxSize}`);
 } catch (e) {
   assert('docx: generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test DOCX mermaid sizing + alignment ─────────────────────────────────────
+// fixture.md has two default-sized mermaid blocks (500px cap, centered) and
+// one sized block: ```mermaid maxWidth=200 align=left```.
+try {
+  const docXml = execFileSync('unzip', ['-p', docxOut, 'word/document.xml']).toString();
+  // EMU: 1 px ≈ 9525; 200 px → 1905000 EMU. Sized diagram must have cx ≤ that.
+  const extents = [...docXml.matchAll(/<wp:extent\s+cx="(\d+)"\s+cy="(\d+)"\s*\/>/g)]
+    .map(m => parseInt(m[1], 10));
+  assert('docx mermaid: >=3 extents found',
+    extents.length >= 3,
+    `found ${extents.length} extents`);
+  const MAX_EMU_200 = 200 * 9525;
+  const sizedExtents = extents.filter(cx => cx <= MAX_EMU_200);
+  assert('docx mermaid: sized diagram respects maxWidth=200',
+    sizedExtents.length >= 1,
+    `extents (EMU): [${extents.join(', ')}] — none ≤ ${MAX_EMU_200}`);
+  // Alignment: the left-aligned diagram produces a paragraph with w:jc w:val="left"
+  // near the drawing. Crude-but-reliable check: does the doc contain both "w:val=\"left\""
+  // and "w:drawing" AND does the left-jc appear before some drawing element?
+  const leftJcBeforeDrawing = /<w:jc\s+w:val="left"\s*\/>[\s\S]*?<w:drawing>/.test(docXml);
+  assert('docx mermaid: align=left produces left-justified paragraph',
+    leftJcBeforeDrawing,
+    'no "<w:jc w:val=\\"left\\"/>" found before a <w:drawing>');
+} catch (e) {
+  assert('docx mermaid: extent/alignment checks', false, e.stderr?.toString() || e.message);
 }
 
 // ── Test PDF generation ──────────────────────────────────────────────────────
