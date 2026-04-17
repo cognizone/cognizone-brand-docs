@@ -273,6 +273,8 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
         elements.push(new Paragraph({
           heading: headingLevel,
           children,
+          keepNext: true,
+          keepLines: true,
           spacing: {
             before: level === 2 ? 320 : 200,
             after: 120,

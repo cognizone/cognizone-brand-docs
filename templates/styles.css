@@ -97,6 +97,18 @@ h4 {
   page-break-after: avoid;
 }
 
+/* Keep headings glued to their first following block.
+   Chrome's PDF renderer honors `page-break-after: avoid` on the heading
+   only unreliably — also telling the next sibling "don't break before me"
+   gives it a second constraint to satisfy, which lands the correct layout. */
+h1, h2, h3, h4 {
+  break-after: avoid;
+}
+h1 + *, h2 + *, h3 + *, h4 + * {
+  page-break-before: avoid;
+  break-before: avoid;
+}
+
 /* ── Body text ────────────────────────────────────────────────────────────── */
 
 p {
