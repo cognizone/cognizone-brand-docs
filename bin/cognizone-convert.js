@@ -6,6 +6,11 @@ const path = require('path');
 
 const args = process.argv.slice(2);
 
+if (args.includes('--version') || args.includes('-v')) {
+  console.log(require('../package.json').version);
+  process.exit(0);
+}
+
 if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
   console.log(`
 Usage: cognizone-convert <input.md|folder> [output] [options]
@@ -16,6 +21,7 @@ When a folder is given, all .md files are merged into a single PDF.
 Options:
   -f, --format <pdf|docx>  Output format (default: pdf)
                            Folder input only supports pdf.
+  -v, --version            Print version and exit
   -h, --help               Show this help message
 
 Examples:
