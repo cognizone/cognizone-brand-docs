@@ -51,6 +51,12 @@ function parseMarkdown(inputFile) {
   // Walk tokens to compute section numbers + TOC entries
   const sectionCounters = [0, 0, 0, 0, 0, 0];
   const tocEntries = [];
+  // De-duplicate heading slugs across the document. Sibling sections often
+  // share a heading like "Required fields"; without disambiguation every TOC
+  // link to that text resolves to the first match (since both target IDs and
+  // getElementById hit the first occurrence), and TOC page numbers for later
+  // duplicates point to the first one's page.
+  const slugCount = new Map();
 
   function walkHeadings(tokenList) {
     for (const token of tokenList) {
@@ -61,7 +67,10 @@ function parseMarkdown(inputFile) {
 
         const number = sectionCounters.slice(1, idx + 1).join('.');
         const plain = token.text.replace(/[*_`[\]()]/g, '').trim();
-        const hId = slugify(plain);
+        const baseSlug = slugify(plain);
+        const seen = slugCount.get(baseSlug) || 0;
+        slugCount.set(baseSlug, seen + 1);
+        const hId = seen === 0 ? baseSlug : `${baseSlug}-${seen + 1}`;
 
         // Attach to token for renderer use
         token._number = number;

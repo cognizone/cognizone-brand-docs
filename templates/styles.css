@@ -397,8 +397,14 @@ hr {
 
 /* ── Page break ───────────────────────────────────────────────────────────── */
 
+/* Use break-before, not break-after. With break-after on an empty marker div,
+   Chromium ends up placing the (zero-height) marker on a fresh page and then
+   breaking again — producing one extra blank page per marker. With break-before
+   the marker sits at the top of the new page and the next sibling continues
+   on the same one, so no blank page is generated. */
 .page-break {
-  page-break-after: always;
+  page-break-before: always;
+  break-before: page;
 }
 
 /* ── Strong / em ──────────────────────────────────────────────────────────── */

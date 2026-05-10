@@ -46,7 +46,7 @@ function buildToc(entries) {
       }
       lines.push('</li>');
     }
-    lines.push(`<li><a href="#${h.id}"><span class="toc-section-number">${h.number}</span> ${h.text}</a>`);
+    lines.push(`<li><a href="#${h.id}"><span class="toc-title"><span class="toc-section-number">${h.number}</span> ${h.text}</span><span class="toc-leader"></span><span class="toc-page"></span></a>`);
     prev = h.level;
   }
 
