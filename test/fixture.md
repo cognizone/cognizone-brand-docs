@@ -45,6 +45,15 @@ Just plain preformatted text.
   With some indentation.
 ```
 
+Code with angle brackets and ampersands (must not be dropped as HTML):
+
+```sparql
+PREFIX eurio: <http://data.europa.eu/s66#>
+SELECT ?s WHERE { ?s a <http://ex/#Thing> . FILTER(?a > 1 && ?b < 2) }
+```
+
+Inline code with brackets: `<html>` & `a < b`.
+
 ## Tables
 
 ### Simple Table

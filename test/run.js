@@ -140,6 +140,11 @@ try {
   assert('docx: file created', fs.existsSync(docxOut));
   const docxSize = fs.statSync(docxOut).size;
   assert('docx: file is non-trivial (>10KB)', docxSize > 10000, `size: ${docxSize}`);
+  // Regression: angle brackets in code blocks must survive (XML-escaped in docx)
+  const docXml = execFileSync('unzip', ['-p', docxOut, 'word/document.xml']).toString();
+  assert('docx: code-block angle brackets preserved',
+    docXml.includes('&lt;http://data.europa.eu/s66#&gt;'),
+    'IRI in code block was dropped or unescaped');
 } catch (e) {
   assert('docx: generation succeeds', false, e.stderr?.toString() || e.message);
 }
