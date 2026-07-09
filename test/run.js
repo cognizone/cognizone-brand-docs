@@ -77,6 +77,15 @@ console.warn = () => {};
 
 console.warn = _origWarn;
 
+// ── Test code-block HTML escaping (angle brackets survive in PDF) ────────────
+// Regression: `<...>` in a code block was parsed as HTML and dropped by Puppeteer.
+const { escapeHtml } = require('../bin/render-pdf');
+assert('escapeHtml: angle brackets escaped',
+  escapeHtml('PREFIX eurio: <http://data.europa.eu/s66#>') ===
+  'PREFIX eurio: &lt;http://data.europa.eu/s66#&gt;');
+assert('escapeHtml: ampersand escaped first',
+  escapeHtml('a & <b>') === 'a &amp; &lt;b&gt;');
+
 // ── Test parse.js ────────────────────────────────────────────────────────────
 const { parseMarkdown } = require('../bin/parse');
 const parsed = parseMarkdown(FIXTURE);

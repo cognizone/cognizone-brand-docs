@@ -9,6 +9,13 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 const { parseMermaidOpts } = require('./mermaid-opts');
 
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 function mermaidWrapHtml(text, info) {
   const opts = parseMermaidOpts(info || '');
   const marginCss =
@@ -77,7 +84,7 @@ function renderPdf(parsed, outputFile) {
         }
         // Default code block rendering
         const langClass = lang ? ` class="language-${lang}"` : '';
-        return `<pre><code${langClass}>${text}</code></pre>\n`;
+        return `<pre><code${langClass}>${escapeHtml(text)}</code></pre>\n`;
       },
     },
   });
@@ -248,7 +255,7 @@ function renderMergedPdf(parsedDocs, folderPath, outputFile) {
           return mermaidWrapHtml(text, lang);
         }
         const langClass = lang ? ` class="language-${lang}"` : '';
-        return `<pre><code${langClass}>${text}</code></pre>\n`;
+        return `<pre><code${langClass}>${escapeHtml(text)}</code></pre>\n`;
       },
     },
   });
@@ -328,4 +335,4 @@ function renderMergedPdf(parsedDocs, folderPath, outputFile) {
   }
 }
 
-module.exports = { renderPdf, renderMergedPdf };
+module.exports = { renderPdf, renderMergedPdf, escapeHtml };
