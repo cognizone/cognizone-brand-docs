@@ -254,8 +254,22 @@ try {
   assert('html: cover id present', html.includes('TEST-001'));
   assert('html: TOC nav with anchor links', /<nav id="TOC">[\s\S]*?<a href="#/.test(html));
   assert('html: section-numbered headings', html.includes('class="section-num"'));
-  assert('html: fonts embedded as data URIs', html.includes('data:font/truetype;base64,'));
+  assert('html: fonts embedded as data URIs', html.includes('data:font/ttf;base64,'));
   assert('html: images embedded as data URIs', html.includes('data:image/png;base64,'));
+  // Sticky header offset so TOC anchor jumps aren't hidden behind the header
+  assert('html: CSS has scroll-padding-top for sticky-header anchor offset',
+    html.includes('scroll-padding-top'));
+  // Default mermaid sizing is always emitted (fixture has bare ```mermaid blocks)
+  assert('html: bare mermaid block emits default max-width:500px',
+    html.includes('max-width:500px'),
+    'no default 500px cap on a bare mermaid block');
+  // Cover metadata table now surfaces ID and the document title as rows
+  assert('html: cover meta table has ID row',
+    /class="meta-label">ID</.test(html),
+    'no meta-label cell containing "ID"');
+  assert('html: cover meta table has Document title row',
+    /class="meta-label">Document title</.test(html),
+    'no meta-label cell containing "Document title"');
   const htmlNoScripts = html.replace(/<script>[\s\S]*?<\/script>/g, '');
   assert('html: raw <img> tags embedded too',
     !/<img\s[^>]*src="(?!data:)/.test(htmlNoScripts),
@@ -272,7 +286,7 @@ try {
 const mergeDir = path.join(OUT_DIR, 'merge-src');
 fs.mkdirSync(mergeDir);
 fs.writeFileSync(path.join(mergeDir, 'a-first.md'),
-  '---\ntitle: First Doc\nid: DOC-A\n---\n\n# First Doc\n\n## Intro\n\nAlpha.\n');
+  '---\ntitle: First Doc\nid: DOC-A\nclient: TestClient\nproject: TestProject\n---\n\n# First Doc\n\n## Intro\n\nAlpha.\n');
 fs.writeFileSync(path.join(mergeDir, 'b-second.md'),
   '---\ntitle: Second Doc\nid: DOC-B\n---\n\n# Second Doc\n\n## Overview\n\nBeta.\n');
 
@@ -287,8 +301,136 @@ try {
     html.includes('id="doc-0-cover"') && html.includes('id="doc-1-cover"'));
   assert('html merge: per-doc heading anchors prefixed',
     html.includes('id="doc-0-intro"') && html.includes('id="doc-1-overview"'));
+
+  // Master TOC nav is the first TOC block; nested headings are numbered with
+  // their document's prefix → doc 1's "## Intro" is 1.1, doc 2's "## Overview" is 2.1
+  const masterNav = (html.match(/<nav id="TOC">[\s\S]*?<\/nav>/) || [''])[0];
+  assert('html merge: master TOC prefixes nested numbers per document',
+    masterNav.includes('>1.1') && masterNav.includes('>2.1'),
+    `master TOC toc-num spans missing 1.1/2.1: ${masterNav.slice(0, 400)}`);
+
+  // TOC nested-list markup must be balanced (open <li> == closing </li>)
+  const liOpen = (masterNav.match(/<li\b/g) || []).length;
+  const liClose = (masterNav.match(/<\/li>/g) || []).length;
+  assert('html merge: TOC <li> tags are balanced',
+    liOpen === liClose,
+    `open <li>=${liOpen}, close </li>=${liClose}`);
+
+  // Merged footer is empty (Puppeteer parity: single static footer, no client/project)
+  const footer = (html.match(/<footer class="doc-footer">[\s\S]*?<\/footer>/) || [''])[0];
+  assert('html merge: footer omits client/project text',
+    !footer.includes('TestClient · TestProject') && !footer.includes('TestClient'),
+    `footer still carries client/project: ${footer}`);
 } catch (e) {
   assert('html merge: generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test HTML mermaid bundle inclusion (only when actually used) ─────────────
+// A document with no mermaid diagrams must NOT inline the (large) mermaid bundle.
+const noMermaidMd = path.join(OUT_DIR, 'no-mermaid.md');
+fs.writeFileSync(noMermaidMd, [
+  '---',
+  'title: No Mermaid Here',
+  '---',
+  '',
+  '## Plain',
+  '',
+  'Just prose, a list, and some `inline code`.',
+  '',
+  '- one',
+  '- two',
+  '',
+].join('\n'));
+const noMermaidOut = path.join(OUT_DIR, 'no-mermaid.html');
+try {
+  execFileSync(process.execPath, [CONVERT, noMermaidMd, noMermaidOut, '--format', 'html'], { stdio: 'pipe' });
+  const html = fs.readFileSync(noMermaidOut, 'utf8');
+  assert('html: no-mermaid doc omits the mermaid bundle',
+    !html.includes('mermaid.initialize'),
+    'mermaid bundle was inlined into a doc with no diagrams');
+  // Sanity: without the ~MB bundle this output is much smaller than a mermaid doc
+  const withMermaid = fs.readFileSync(htmlOut, 'utf8');
+  assert('html: no-mermaid output is much smaller than a mermaid doc',
+    html.length < withMermaid.length,
+    `no-mermaid=${html.length}, fixture=${withMermaid.length}`);
+} catch (e) {
+  assert('html: no-mermaid generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test HTML mermaid false-positive (mermaid only inside a code example) ────
+// A ```mermaid fence shown *inside* a fenced code block is documentation, not a
+// diagram — a naive substring match on the source would wrongly inline the bundle.
+const mermaidExampleMd = path.join(OUT_DIR, 'mermaid-example.md');
+fs.writeFileSync(mermaidExampleMd, [
+  '---',
+  'title: Mermaid Docs Example',
+  '---',
+  '',
+  '## How to write a diagram',
+  '',
+  'Wrap your diagram in a fenced block like this:',
+  '',
+  '````markdown',
+  '```mermaid',
+  'flowchart TD',
+  '  A --> B',
+  '```',
+  '````',
+  '',
+  'That is all.',
+  '',
+].join('\n'));
+const mermaidExampleOut = path.join(OUT_DIR, 'mermaid-example.html');
+try {
+  execFileSync(process.execPath, [CONVERT, mermaidExampleMd, mermaidExampleOut, '--format', 'html'], { stdio: 'pipe' });
+  const html = fs.readFileSync(mermaidExampleOut, 'utf8');
+  assert('html: mermaid inside a code example does not inline the bundle',
+    !html.includes('mermaid.initialize'),
+    'a documented ```mermaid example triggered a false-positive bundle inline');
+} catch (e) {
+  assert('html: mermaid-example generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test HTML does not embed non-image referenced files (info leak guard) ────
+// `![x](secret.txt)` must not slurp arbitrary local files into the output.
+const secretMarker = 'SUPERSECRETMARKER_DO_NOT_LEAK_31337';
+const leakDir = path.join(OUT_DIR, 'leak-src');
+fs.mkdirSync(leakDir);
+const secretTxt = path.join(leakDir, 'secret.txt');
+fs.writeFileSync(secretTxt, `top ${secretMarker} secret\n`);
+const leakMd = path.join(leakDir, 'leak.md');
+fs.writeFileSync(leakMd, [
+  '---',
+  'title: Leak Test',
+  '---',
+  '',
+  '## Body',
+  '',
+  '![x](secret.txt)',
+  '',
+].join('\n'));
+const leakOut = path.join(OUT_DIR, 'leak.html');
+try {
+  execFileSync(process.execPath, [CONVERT, leakMd, leakOut, '--format', 'html'], { stdio: 'pipe' });
+  const html = fs.readFileSync(leakOut, 'utf8');
+  const b64Secret = fs.readFileSync(secretTxt).toString('base64');
+  assert('html: non-image file content not embedded raw', !html.includes(secretMarker));
+  assert('html: non-image file content not embedded as base64', !html.includes(b64Secret),
+    'secret.txt was base64-embedded as a data URI');
+} catch (e) {
+  assert('html: non-image reference conversion succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test default folder output naming (html) ─────────────────────────────────
+// Folder input with no explicit output → <folder-basename>.html in the CWD.
+try {
+  execFileSync(process.execPath, [CONVERT, mergeDir, '--format', 'html'], { cwd: OUT_DIR, stdio: 'pipe' });
+  const expected = path.join(OUT_DIR, `${path.basename(mergeDir)}.html`);
+  assert('html merge: default output is <folder>.html in CWD',
+    fs.existsSync(expected),
+    `expected ${expected}`);
+} catch (e) {
+  assert('html merge: default output naming succeeds', false, e.stderr?.toString() || e.message);
 }
 
 // ── Test HTML escaping of hostile input ──────────────────────────────────────
