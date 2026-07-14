@@ -180,9 +180,11 @@ function bodyHtml(parsed, idPrefix = '') {
     },
 
     image(href, title, text) {
-      const src = resolveImageSrc(href, inputDir);
-      const alt = text ? ` alt="${text}"` : '';
-      const ttl = title ? ` title="${title}"` : '';
+      // marked v13 passes href raw — escape everything to keep a crafted
+      // destination like x.png"onerror=... from breaking out of the attribute
+      const src = escapeHtml(resolveImageSrc(href, inputDir));
+      const alt = text ? ` alt="${escapeHtml(text)}"` : '';
+      const ttl = title ? ` title="${escapeHtml(title)}"` : '';
       return `<img src="${src}"${alt}${ttl}>`;
     },
   };

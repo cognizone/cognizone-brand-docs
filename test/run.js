@@ -291,6 +291,39 @@ try {
   assert('html merge: generation succeeds', false, e.stderr?.toString() || e.message);
 }
 
+// ── Test HTML escaping of hostile input ──────────────────────────────────────
+const hostileMd = path.join(OUT_DIR, 'hostile.md');
+fs.writeFileSync(hostileMd, [
+  '---',
+  'title: Hostile <img src=x onerror=alert(1)> "Doc"',
+  '---',
+  '',
+  '# Hostile',
+  '',
+  '## Body',
+  '',
+  '![evil](x.png"onerror=alert(1))',
+  '',
+  '![He said "hi"](missing.png "a "quoted" title")',
+  '',
+].join('\n'));
+
+const hostileOut = path.join(OUT_DIR, 'hostile.html');
+try {
+  execFileSync(process.execPath, [CONVERT, hostileMd, hostileOut, '--format', 'html'], { stdio: 'pipe' });
+  const html = fs.readFileSync(hostileOut, 'utf8');
+  assert('html escaping: image href cannot break out of src attribute',
+    !/<img[^>]*src="[^"]*"onerror/.test(html) && !html.includes('src="x.png"onerror'));
+  assert('html escaping: quote in image href is entity-encoded',
+    html.includes('src="x.png&quot;onerror=alert(1)"'));
+  assert('html escaping: hostile frontmatter title neutralized',
+    !html.includes('<img src=x onerror'));
+  assert('html escaping: quotes in alt/title stay inside the attribute',
+    !/alt="[^"]*"hi"/.test(html) && !/title="[^"]*"quoted"/.test(html));
+} catch (e) {
+  assert('html escaping: generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
 // ── Test folder + docx still rejected ────────────────────────────────────────
 try {
   execFileSync(process.execPath, [CONVERT, mergeDir, path.join(OUT_DIR, 'merged.docx'), '--format', 'docx'], { stdio: 'pipe' });
