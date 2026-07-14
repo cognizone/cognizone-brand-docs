@@ -12,26 +12,37 @@ const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 
 // ── Asset embedding ──────────────────────────────────────────────────────────
 
-function b64(filePath) {
-  return fs.readFileSync(filePath).toString('base64');
-}
+const MIME_TYPES = {
+  '.ttf': 'font/ttf',
+  '.woff2': 'font/woff2',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+};
+
+// Extensions we will base64-embed as images. Restricting to these prevents a
+// crafted markdown reference like ![x](../../.ssh/id_rsa) from smuggling
+// arbitrary file bytes into the shareable HTML.
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
 
 function mimeType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  return {
-    '.ttf': 'font/truetype',
-    '.woff2': 'font/woff2',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.gif': 'image/gif',
-    '.svg': 'image/svg+xml',
-    '.webp': 'image/webp',
-  }[ext] || 'application/octet-stream';
+  return MIME_TYPES[ext];
 }
 
+// Cache encoded data URIs by absolute path so a shared image (logo, or an image
+// referenced across N merged documents) is read and base64-encoded only once.
+const dataUriCache = new Map();
+
 function dataUri(filePath) {
-  return `data:${mimeType(filePath)};base64,${b64(filePath)}`;
+  const key = path.resolve(filePath);
+  if (dataUriCache.has(key)) return dataUriCache.get(key);
+  const uri = `data:${mimeType(filePath)};base64,${fs.readFileSync(filePath).toString('base64')}`;
+  dataUriCache.set(key, uri);
+  return uri;
 }
 
 // Embed fonts as base64 @font-face declarations so the HTML is self-contained.
@@ -55,9 +66,16 @@ function buildFontsCss() {
 // Resolve an image path from the markdown source to an absolute file URI or
 // embedded data URI. Relative paths are resolved against the document's dir.
 function resolveImageSrc(src, inputDir) {
-  if (/^https?:\/\//.test(src) || src.startsWith('data:')) return src;
+  if (/^(https?:|data:|file:)/i.test(src)) return src;
   const absPath = path.resolve(inputDir, src);
   if (!fs.existsSync(absPath)) return src;
+  // Only embed recognised image types. Anything else (e.g. a .txt or a key
+  // file) is left as-is so we never inline arbitrary file bytes.
+  const ext = path.extname(absPath).toLowerCase();
+  if (!IMAGE_EXTS.has(ext)) {
+    console.warn(`[html] skipping non-image reference (not embedded): ${src}`);
+    return src;
+  }
   return dataUri(absPath);
 }
 
@@ -83,6 +101,8 @@ function coverPageHtml(doc) {
   const logoUri = dataUri(path.join(TEMPLATES_DIR, 'logo.png'));
 
   const rows = [
+    ['ID', id],
+    ['Document title', title],
     ['Type', type],
     ['Status', status],
     ['Version', version],
@@ -116,28 +136,38 @@ function coverPageHtml(doc) {
 function tocHtml(tocEntries, idPrefix = '') {
   if (!tocEntries.length) return '';
 
-  // Build nested list from flat entries (H2 → H4)
-  const lines = ['<nav id="TOC"><h2>Contents</h2><ul>'];
-  let prevLevel = 2;
+  // Build nested list from flat entries (H2 → H4). Mirrors buildToc in
+  // render-pdf.js: a stack tracks open nesting levels so every <li> and <ul>
+  // is closed exactly once.
+  const lines = ['<nav id="TOC"><h2>Contents</h2>'];
+  const stack = [];
+  let prev = 0;
 
   for (const entry of tocEntries) {
     const level = Math.max(2, Math.min(entry.level, 4));
-    if (level > prevLevel) {
-      for (let i = prevLevel; i < level; i++) lines.push('<ul>');
-    } else if (level < prevLevel) {
-      for (let i = level; i < prevLevel; i++) lines.push('</ul></li>');
-    } else if (prevLevel !== 2 || lines.length > 2) {
+    if (prev === 0) {
+      lines.push('<ul>');
+      stack.push(level);
+    } else if (level > prev) {
+      lines.push('<ul>');
+      stack.push(level);
+    } else if (level === prev) {
+      lines.push('</li>');
+    } else {
+      while (stack.length && stack[stack.length - 1] > level) {
+        lines.push('</li></ul>');
+        stack.pop();
+      }
       lines.push('</li>');
     }
     const anchor = `${idPrefix}${entry.id}`;
     const prefix = entry.number ? `${entry.number} ` : '';
     lines.push(`<li><a href="#${anchor}"><span class="toc-num">${escapeHtml(prefix)}</span><span class="toc-title">${escapeHtml(entry.text)}</span></a>`);
-    prevLevel = level;
+    prev = level;
   }
 
-  // Close open tags
-  for (let i = 2; i < prevLevel; i++) lines.push('</li></ul>');
-  lines.push('</li></ul></nav>');
+  while (stack.length) { lines.push('</li></ul>'); stack.pop(); }
+  lines.push('</nav>');
   return lines.join('\n');
 }
 
@@ -167,7 +197,7 @@ function bodyHtml(parsed, idPrefix = '') {
       const opts = parseMermaidOpts(lang);
       if (opts.isMermaid) {
         const style = [
-          opts.maxWidth !== 500 ? `max-width:${opts.maxWidth}px` : '',
+          `max-width:${opts.maxWidth}px`,
           opts.align === 'left' ? 'margin-left:0;margin-right:auto' :
           opts.align === 'right' ? 'margin-left:auto;margin-right:0' : 'margin:0 auto',
         ].filter(Boolean).join(';');
@@ -211,7 +241,7 @@ const STYLES = `
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { scroll-behavior: smooth; }
+html { scroll-behavior: smooth; scroll-padding-top: 56px; }
 
 body {
   font-family: 'Roboto', sans-serif;
@@ -544,7 +574,10 @@ img { max-width: 100%; height: auto; }
 /* ── Merged doc dividers ────────────────────────────────────────────────────*/
 
 .doc-section { border-top: 3px solid var(--green); padding-top: 32px; margin-top: 48px; }
-.doc-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+/* The first document section is preceded by the master cover + TOC (not another
+   .doc-section), so it should not carry the inter-document divider. Match the
+   first section only — any section directly following another keeps the rule. */
+.doc-section:not(.doc-section + .doc-section) { border-top: none; padding-top: 0; margin-top: 0; }
 
 /* ── Merged cover table ─────────────────────────────────────────────────────*/
 
@@ -585,12 +618,25 @@ img { max-width: 100%; height: auto; }
 }
 `;
 
+// Detect mermaid blocks from the parsed token tree rather than substring-matching
+// the raw markdown: a 4-backtick fence showing a ```mermaid example is NOT a
+// mermaid diagram, and ~~~mermaid fences must still count. We check the fenced
+// code tokens' lang directly (parseMermaidOpts is avoided here so its stderr
+// warnings on invalid opts don't fire during mere detection).
+function docHasMermaid(parsed) {
+  return (parsed.tokens || []).some(
+    t => t.type === 'code' && /^mermaid\b/.test((t.lang || '').trim()),
+  );
+}
+
 // ── Mermaid script ───────────────────────────────────────────────────────────
 
 // Inline the mermaid UMD bundle so diagrams render offline — the HTML stays
 // fully self-contained. Only included when the document has mermaid blocks.
 function mermaidScript() {
-  const bundle = fs.readFileSync(require.resolve('mermaid/dist/mermaid.min.js'), 'utf8');
+  const bundle = fs.readFileSync(require.resolve('mermaid/dist/mermaid.min.js'), 'utf8')
+    // A literal </script in the bundle would prematurely close our inline tag.
+    .replace(/<\/script/gi, '<\\/script');
   return `
 <script>${bundle}</script>
 <script>
@@ -634,7 +680,7 @@ ${hasMermaid ? mermaidScript() : ''}
 
 function renderHtml(parsed, outputFile) {
   const fontsCss = buildFontsCss();
-  const hasMermaid = parsed.mdNoH1.includes('```mermaid');
+  const hasMermaid = docHasMermaid(parsed);
 
   const cover = coverPageHtml(parsed);
   const toc = tocHtml(parsed.tocEntries);
@@ -659,7 +705,7 @@ function renderHtml(parsed, outputFile) {
 function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   const fontsCss = buildFontsCss();
   const folderName = path.basename(inputDir);
-  const hasMermaid = parsedDocs.some(d => d.mdNoH1.includes('```mermaid'));
+  const hasMermaid = parsedDocs.some(docHasMermaid);
   const logoUri = dataUri(path.join(TEMPLATES_DIR, 'logo.png'));
 
   // Master cover
@@ -686,7 +732,7 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   parsedDocs.forEach((d, i) => {
     const docPrefix = `doc-${i}-`;
     allTocEntries.push({ level: 2, text: d.title, id: `${docPrefix}cover`, number: String(i + 1) });
-    d.tocEntries.forEach(e => allTocEntries.push({ ...e, level: Math.min(e.level + 1, 4), id: `${docPrefix}${e.id}` }));
+    d.tocEntries.forEach(e => allTocEntries.push({ ...e, level: Math.min(e.level + 1, 4), id: `${docPrefix}${e.id}`, number: `${i + 1}.${e.number}` }));
   });
 
   const masterToc = tocHtml(allTocEntries);
@@ -706,8 +752,10 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
 
   const bodyContent = [masterCover, masterToc, docSections].join('\n');
 
-  const firstDoc = parsedDocs[0] || {};
-  const footerTitle = firstDoc.footerTitle || '';
+  // Merged output spans documents that may belong to different clients/projects,
+  // so a single per-document footer would be misleading — leave it empty
+  // (matching renderMergedPdf).
+  const footerTitle = '';
 
   const html = htmlPage({
     title: folderName,
