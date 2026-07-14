@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 'use strict';
-// Cross-platform Markdown → PDF/DOCX pipeline.
+// Cross-platform Markdown → PDF/DOCX/HTML pipeline.
 // Pure Node.js — no bash, pandoc, or Unix tools required.
 
 const fs = require('fs');
@@ -23,16 +23,22 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!inputArg) {
-  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx]');
+  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html]');
   process.exit(1);
 }
 
-if (!['pdf', 'docx'].includes(format)) {
-  console.error(`Unknown format: ${format}. Supported: pdf, docx`);
+if (!['pdf', 'docx', 'html'].includes(format)) {
+  console.error(`Unknown format: ${format}. Supported: pdf, docx, html`);
   process.exit(1);
 }
 
 const inputPath = path.resolve(inputArg);
+
+if (!fs.existsSync(inputPath)) {
+  console.error(`Input not found: ${inputPath}`);
+  process.exit(1);
+}
+
 const isDirectory = fs.statSync(inputPath).isDirectory();
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -49,8 +55,8 @@ function findMarkdownFiles(dir) {
 // ── Parse + render ───────────────────────────────────────────────────────────
 async function main() {
   if (isDirectory) {
-    if (format !== 'pdf') {
-      console.error('Folder input only supports PDF output.');
+    if (format === 'docx') {
+      console.error('Folder input only supports pdf and html output.');
       process.exit(1);
     }
 
@@ -64,19 +70,28 @@ async function main() {
     const parsedDocs = mdFiles.map(f => parseMarkdown(f));
 
     const folderName = path.basename(inputPath);
-    const outputFile = path.resolve(outputArg || `${folderName}.pdf`);
+    const ext = format === 'html' ? '.html' : '.pdf';
+    const outputFile = path.resolve(outputArg || `${folderName}${ext}`);
 
-    const { renderMergedPdf } = require('./render-pdf');
-    renderMergedPdf(parsedDocs, inputPath, outputFile);
+    if (format === 'html') {
+      const { renderMergedHtml } = require('./render-html');
+      renderMergedHtml(parsedDocs, inputPath, outputFile);
+    } else {
+      const { renderMergedPdf } = require('./render-pdf');
+      renderMergedPdf(parsedDocs, inputPath, outputFile);
+    }
     console.log(`Written: ${outputFile}`);
   } else {
-    const ext = format === 'docx' ? '.docx' : '.pdf';
+    const ext = format === 'docx' ? '.docx' : format === 'html' ? '.html' : '.pdf';
     const outputFile = path.resolve(outputArg || inputPath.replace(/\.md$/, ext));
     const parsed = parseMarkdown(inputPath);
 
     if (format === 'docx') {
       const { renderDocx } = require('./render-docx');
       await renderDocx(parsed, outputFile);
+    } else if (format === 'html') {
+      const { renderHtml } = require('./render-html');
+      renderHtml(parsed, outputFile);
     } else {
       const { renderPdf } = require('./render-pdf');
       renderPdf(parsed, outputFile);

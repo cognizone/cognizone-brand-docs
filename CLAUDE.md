@@ -4,11 +4,11 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## Repository Purpose
 
-This is the **Cognizone branded document conversion** package (`@cognizone/brand-docs`). It converts Markdown files to branded output formats (PDF, Word) using Cognizone brand styles — colors, fonts, and layout.
+This is the **Cognizone branded document conversion** package (`@cognizone/brand-docs`). It converts Markdown files to branded output formats (PDF, Word, HTML) using Cognizone brand styles — colors, fonts, and layout.
 
 Published to GitHub Packages. Installed via Git URL: `npm install -g cognizone/cognizone-brand-docs`. CLI command: `cognizone-convert`.
 
-Supports single-file conversion (PDF or DOCX) and folder merge (all `.md` files → single PDF).
+Supports single-file conversion (PDF, DOCX, or HTML) and folder merge (all `.md` files → single PDF or HTML).
 
 ## Repo Structure
 
@@ -19,6 +19,7 @@ bin/
   parse.js                # Shared parsing: frontmatter, lexing, section numbers, TOC
   render-pdf.js           # PDF renderer (HTML assembly + Puppeteer)
   render-docx.js          # DOCX renderer (token tree → docx Document)
+  render-html.js          # HTML renderer (self-contained single file, no Puppeteer)
 templates/
   styles.css              # Cognizone brand CSS for PDF output
   pdf-print.js            # Puppeteer script — renders HTML to PDF with headers/footers
@@ -32,11 +33,11 @@ package.json              # npm package config
 `bin/convert.js` orchestrates the conversion (pure Node.js, no bash or pandoc):
 
 1. **Parse** (`parse.js`) — `gray-matter` extracts frontmatter; `marked.lexer()` produces token tree; walks tokens to compute section numbers + TOC entries
-2. **Route** — based on `--format` flag, delegates to `render-pdf.js` or `render-docx.js`
+2. **Route** — based on `--format` flag, delegates to `render-pdf.js`, `render-docx.js`, or `render-html.js`
 
-### Folder merge path (PDF only)
+### Folder merge path (PDF and HTML)
 
-When the input is a directory, `convert.js` recursively finds all `.md` files (sorted alphabetically), parses each one, and calls `renderMergedPdf()` in `render-pdf.js`. This produces a single PDF:
+When the input is a directory, `convert.js` recursively finds all `.md` files (sorted alphabetically), parses each one, and calls `renderMergedPdf()` in `render-pdf.js` (or `renderMergedHtml()` in `render-html.js` when `--format html`). This produces a single file:
 
 1. **Master cover page** — folder name as title, table listing all documents (number, ID, title)
 2. **Master TOC** — single table of contents; each document is a top-level entry with its headings nested below
@@ -46,7 +47,7 @@ Key details:
 
 - Section numbering resets per document
 - Heading IDs are prefixed with `doc-{index}-` to avoid collisions across documents
-- Relative image paths are resolved to absolute `file://` URLs per document (no `<base href>`)
+- Relative image paths are resolved per document — PDF uses absolute `file://` URLs (no `<base href>`); HTML embeds them as data URIs
 - Header shows the folder name; footer is empty (Puppeteer only supports one static header/footer template)
 - DOCX merge is not supported — folder input errors if `--format docx` is requested
 
@@ -66,6 +67,17 @@ Key details:
 5. `Packer.toBuffer()` → write `.docx` file
 
 Note: Word references fonts by name (can't embed TTFs). Roboto/Roboto Mono must be installed on the machine opening the file, or Word falls back to defaults.
+
+### HTML path (`render-html.js`)
+
+1. Same marked renderer approach as PDF (section-numbered headings, mermaid `<pre class="mermaid">` blocks)
+2. Assemble a single self-contained `.html` file — no Puppeteer, no external requests:
+   - Roboto/Roboto Mono fonts and logo embedded as base64 data URIs
+   - Images (both `![alt](path)` and raw `<img>` tags) embedded as data URIs, resolved relative to the source file
+   - Mermaid UMD bundle inlined into a `<script>` (only when the document has mermaid blocks) so diagrams render offline
+3. Web-style layout instead of paged: sticky branded header, anchor-link TOC (no page numbers), footer at document end, `@media print` rules for browser printing
+
+HTML brand CSS lives in `render-html.js` (`STYLES` constant), mirroring `templates/styles.css` values.
 
 `templates/pdf-print.js`:
 
@@ -117,7 +129,7 @@ All fields are optional. How each field is used:
 
 ## Rendering Rules
 
-Both PDF and DOCX apply the same brand rules. Defined in `templates/styles.css` (PDF) and `bin/render-docx.js` (DOCX).
+All formats apply the same brand rules. Defined in `templates/styles.css` (PDF), `bin/render-docx.js` (DOCX), and `bin/render-html.js` (HTML).
 
 ### Brand colors
 
@@ -154,7 +166,7 @@ H1 is stripped from body (used on cover page only). Body headings get section nu
 
 ### Elements
 
-- **Mermaid diagrams**: `` ```mermaid `` code blocks render as visual diagrams. PDF: client-side SVG via mermaid.js in Puppeteer. DOCX: pre-rendered to PNG via headless browser, embedded as images. Uses `theme: 'neutral'`. Per-diagram sizing via fence options: `` ```mermaid maxWidth=300 align=left `` — keys `maxWidth` (pixels, default 500) and `align` (`left`/`center`/`right`, default `center`). Parsed by `bin/mermaid-opts.js`; invalid values warn to stderr and fall back to defaults
+- **Mermaid diagrams**: `` ```mermaid `` code blocks render as visual diagrams. PDF: client-side SVG via mermaid.js in Puppeteer. DOCX: pre-rendered to PNG via headless browser, embedded as images. HTML: mermaid bundle inlined, renders in the browser on open. Uses `theme: 'neutral'`. Per-diagram sizing via fence options: `` ```mermaid maxWidth=300 align=left `` — keys `maxWidth` (pixels, default 500) and `align` (`left`/`center`/`right`, default `center`). Parsed by `bin/mermaid-opts.js`; invalid values warn to stderr and fall back to defaults
 - **Code blocks**: Roboto Mono 8.5pt, `#188038` on `#f5f5f5`, green left border
 - **Inline code**: Roboto Mono 9pt, `#188038` on `#f5f5f5`
 - **Tables**: Green header row (white bold text, 9.5pt), alternating `#E8F5F3`/white body rows, `#BFBFBF` borders
@@ -162,7 +174,7 @@ H1 is stripped from body (used on cover page only). Body headings get section nu
 - **Links**: `#058775` (green), no underline
 - **Horizontal rules**: 1px `#BFBFBF`
 - **Lists**: Bullet (•/◦/–) and ordered (1./a./i.) with nested indentation
-- **Images**: `![alt](path)` and `<img>` tags supported; PDF constrains via `max-width: 100%`; DOCX scales to max 500px wide preserving aspect ratio. Paths resolve relative to the input markdown file
+- **Images**: `![alt](path)` and `<img>` tags supported; PDF and HTML constrain via `max-width: 100%`; DOCX scales to max 500px wide preserving aspect ratio. Paths resolve relative to the input markdown file; HTML embeds them as base64 data URIs
 
 ### Document structure
 
@@ -223,8 +235,9 @@ cognizone-convert document.md                    # → document.pdf
 cognizone-convert document.md --format docx      # → document.docx
 cognizone-convert document.md output.pdf         # custom output path
 
-# Folder merge (PDF only)
+# Folder merge (PDF or HTML)
 cognizone-convert docs/                          # → docs.pdf in CWD
+cognizone-convert docs/ -f html                  # → docs.html in CWD
 cognizone-convert docs/ merged-output.pdf        # custom output path
 ```
 

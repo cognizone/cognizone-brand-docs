@@ -1,13 +1,14 @@
 # @cognizone/brand-docs
 
-Cognizone branded document conversion. Converts Markdown files to PDF or Word (.docx) using Cognizone brand styles (colors, fonts, layout).
+Cognizone branded document conversion. Converts Markdown files to PDF, Word (.docx), or HTML using Cognizone brand styles (colors, fonts, layout).
 
 Works on macOS, Linux, and Windows — no bash or pandoc required.
 
 ## Features
 
-- **PDF and Word output** from a single Markdown source
-- **Folder merge** — pass a folder to combine all Markdown files into a single PDF with a master cover page and TOC
+- **PDF, Word, and HTML output** from a single Markdown source
+- **Self-contained HTML** — a single `.html` file with fonts, images, logo, and mermaid embedded; opens offline in any browser
+- **Folder merge** — pass a folder to combine all Markdown files into a single PDF or HTML file with a master cover page and TOC
 - **Branded cover page** with document ID, title, and metadata table
 - **Auto-generated table of contents** with section numbers and page references
 - **Branded headers and footers** with logo, document title, client/project info, and page numbers
@@ -35,11 +36,13 @@ To update to the latest version, run the same command again.
 ```bash
 cognizone-convert document.md                        # converts to PDF (default)
 cognizone-convert document.md --format docx          # converts to Word
+cognizone-convert document.md --format html          # converts to self-contained HTML
 cognizone-convert document.md -f docx                # short form
 cognizone-convert document.md output/custom-name.pdf # custom output path
 
-# Folder merge (PDF only)
+# Folder merge (PDF or HTML)
 cognizone-convert docs/                              # merges all .md files → docs.pdf
+cognizone-convert docs/ -f html                      # merges all .md files → docs.html
 cognizone-convert docs/ merged-output.pdf            # custom output path
 ```
 
@@ -66,7 +69,7 @@ All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `s
 
 ## Sizing mermaid diagrams
 
-Add options to the fence line to control per-diagram width and alignment. Applies to both PDF and DOCX output.
+Add options to the fence line to control per-diagram width and alignment. Applies to PDF, DOCX, and HTML output.
 
 ````markdown
 ```mermaid maxWidth=300 align=left

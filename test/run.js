@@ -243,9 +243,98 @@ try {
   assert('edge: no frontmatter produces valid docx', false, e.stderr?.toString() || e.message);
 }
 
+// ── Test HTML generation ─────────────────────────────────────────────────────
+const htmlOut = path.join(OUT_DIR, 'fixture.html');
+try {
+  execFileSync(process.execPath, [CONVERT, FIXTURE, htmlOut, '--format', 'html'], { stdio: 'pipe' });
+  assert('html: file created', fs.existsSync(htmlOut));
+  const html = fs.readFileSync(htmlOut, 'utf8');
+  assert('html: file is non-trivial (>10KB)', html.length > 10000, `size: ${html.length}`);
+  assert('html: title present', html.includes('<title>Test Document: All Formatting Features</title>'));
+  assert('html: cover id present', html.includes('TEST-001'));
+  assert('html: TOC nav with anchor links', /<nav id="TOC">[\s\S]*?<a href="#/.test(html));
+  assert('html: section-numbered headings', html.includes('class="section-num"'));
+  assert('html: fonts embedded as data URIs', html.includes('data:font/truetype;base64,'));
+  assert('html: images embedded as data URIs', html.includes('data:image/png;base64,'));
+  const htmlNoScripts = html.replace(/<script>[\s\S]*?<\/script>/g, '');
+  assert('html: raw <img> tags embedded too',
+    !/<img\s[^>]*src="(?!data:)/.test(htmlNoScripts),
+    'found an <img> with a non-data src');
+  assert('html: mermaid inlined for offline use', html.includes('mermaid.initialize'));
+  assert('html: no external resource loads',
+    !/(?:src|href)="https?:\/\/(?!cogni\.zone)/.test(html.replace(/<script>[\s\S]*?<\/script>/g, '')),
+    'found external src/href outside cogni.zone links');
+} catch (e) {
+  assert('html: generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test HTML folder merge ───────────────────────────────────────────────────
+const mergeDir = path.join(OUT_DIR, 'merge-src');
+fs.mkdirSync(mergeDir);
+fs.writeFileSync(path.join(mergeDir, 'a-first.md'),
+  '---\ntitle: First Doc\nid: DOC-A\n---\n\n# First Doc\n\n## Intro\n\nAlpha.\n');
+fs.writeFileSync(path.join(mergeDir, 'b-second.md'),
+  '---\ntitle: Second Doc\nid: DOC-B\n---\n\n# Second Doc\n\n## Overview\n\nBeta.\n');
+
+const mergedHtmlOut = path.join(OUT_DIR, 'merged.html');
+try {
+  execFileSync(process.execPath, [CONVERT, mergeDir, mergedHtmlOut, '--format', 'html'], { stdio: 'pipe' });
+  assert('html merge: file created', fs.existsSync(mergedHtmlOut));
+  const html = fs.readFileSync(mergedHtmlOut, 'utf8');
+  assert('html merge: master cover table lists docs',
+    html.includes('master-cover-table') && html.includes('DOC-A') && html.includes('DOC-B'));
+  assert('html merge: doc-prefixed anchors present',
+    html.includes('id="doc-0-cover"') && html.includes('id="doc-1-cover"'));
+  assert('html merge: per-doc heading anchors prefixed',
+    html.includes('id="doc-0-intro"') && html.includes('id="doc-1-overview"'));
+} catch (e) {
+  assert('html merge: generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test HTML escaping of hostile input ──────────────────────────────────────
+const hostileMd = path.join(OUT_DIR, 'hostile.md');
+fs.writeFileSync(hostileMd, [
+  '---',
+  'title: Hostile <img src=x onerror=alert(1)> "Doc"',
+  '---',
+  '',
+  '# Hostile',
+  '',
+  '## Body',
+  '',
+  '![evil](x.png"onerror=alert(1))',
+  '',
+  '![He said "hi"](missing.png "a "quoted" title")',
+  '',
+].join('\n'));
+
+const hostileOut = path.join(OUT_DIR, 'hostile.html');
+try {
+  execFileSync(process.execPath, [CONVERT, hostileMd, hostileOut, '--format', 'html'], { stdio: 'pipe' });
+  const html = fs.readFileSync(hostileOut, 'utf8');
+  assert('html escaping: image href cannot break out of src attribute',
+    !/<img[^>]*src="[^"]*"onerror/.test(html) && !html.includes('src="x.png"onerror'));
+  assert('html escaping: quote in image href is entity-encoded',
+    html.includes('src="x.png&quot;onerror=alert(1)"'));
+  assert('html escaping: hostile frontmatter title neutralized',
+    !html.includes('<img src=x onerror'));
+  assert('html escaping: quotes in alt/title stay inside the attribute',
+    !/alt="[^"]*"hi"/.test(html) && !/title="[^"]*"quoted"/.test(html));
+} catch (e) {
+  assert('html escaping: generation succeeds', false, e.stderr?.toString() || e.message);
+}
+
+// ── Test folder + docx still rejected ────────────────────────────────────────
+try {
+  execFileSync(process.execPath, [CONVERT, mergeDir, path.join(OUT_DIR, 'merged.docx'), '--format', 'docx'], { stdio: 'pipe' });
+  assert('edge: folder input rejects docx', false, 'should have thrown');
+} catch {
+  assert('edge: folder input rejects docx', true);
+}
+
 // ── Test format flag validation ──────────────────────────────────────────────
 try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, '/dev/null', '--format', 'html'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, FIXTURE, '/dev/null', '--format', 'rtf'], { stdio: 'pipe' });
   assert('edge: unknown format rejected', false, 'should have thrown');
 } catch {
   assert('edge: unknown format rejected', true);
