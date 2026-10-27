@@ -304,6 +304,8 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       }
 
       case 'paragraph':
+      // List-item continuation paragraphs arrive as block 'text' tokens with inline children
+      case 'text':
         elements.push(new Paragraph({
           children: inlineToRuns(token.tokens),
           spacing: { after: 120, line: 360 },
@@ -515,6 +517,13 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
         for (const subItem of sub.items) {
           elements.push(...listItemToElements(subItem, subRef, depth + 1, mermaidImages));
         }
+      } else if (sub.type === 'text' || sub.type === 'paragraph') {
+        // Continuation paragraph: align with the item text (matches the numbering level indent)
+        elements.push(new Paragraph({
+          children: inlineToRuns(sub.tokens || [{ type: 'text', raw: sub.raw || '' }]),
+          indent: { left: convertMillimetersToTwip(5 * (depth + 1)) },
+          spacing: { after: 120, line: 360 },
+        }));
       } else {
         elements.push(...tokensToElements([sub], depth, mermaidImages));
       }
