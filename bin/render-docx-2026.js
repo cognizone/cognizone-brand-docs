@@ -10,8 +10,8 @@ const path = require('path');
 const { parseMermaidOpts } = require('./mermaid-opts');
 
 const {
-  Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun,
-  Table, TableRow, TableCell, TableOfContents,
+  Document, Packer, Paragraph, TextRun, ExternalHyperlink, InternalHyperlink, ImageRun,
+  Table, TableRow, TableCell, BookmarkStart, BookmarkEnd, BuilderElement,
   Header, Footer, PageNumber,
   AlignmentType, HeadingLevel, WidthType, BorderStyle, TableLayoutType,
   SectionType, TabStopType, ShadingType, LevelFormat, VerticalAlignTable,
@@ -62,7 +62,7 @@ const HEADER_DISTANCE = convertMillimetersToTwip(12.5);
 // Usable width in twips (A4 = 210mm, minus 20mm each side = 170mm)
 const CONTENT_WIDTH_TWIP = convertMillimetersToTwip(170);
 // TOC text column (H2 number → text tab stop, H3 indent)
-const TOC_TEXT_COL = convertMillimetersToTwip(19.4);
+const TOC_TEXT_COL = convertMillimetersToTwip(26);
 // List indent per level 6.35mm, hanging 4.2mm (exact reference values)
 const LIST_INDENT  = 360;
 const LIST_HANGING = 240;
@@ -176,8 +176,7 @@ function detectImageType(filePath) {
 }
 
 // Run properties for a text run. With ctx.inherit (headings) font/size/colour are
-// left to the paragraph style, so Word's TOC entries pick up the TOC styles instead
-// of the heading look (Word copies direct character formatting into TOC entries).
+// left to the paragraph style.
 function runProps(ctx) {
   const props = {
     bold: ctx.bold || undefined,
@@ -280,38 +279,46 @@ function inlineToRuns(tokens, ctx = {}) {
 // ── Block token → Paragraph/Table conversion ─────────────────────────────────
 let _orderedListIndex = 0;
 
-// Set while rendering a blockquote's children so every paragraph inside it
-// (including list items) gets the quote styling, not just the first one
+// Set while rendering a blockquote's children so every run inside it (including
+// list items) gets the quote text style; the bar and fill come from the quote's table
 let _inQuote = false;
 const QUOTE_RUN = { italics: true, color: PLUM_SOFT };
-const QUOTE_BOX = {
-  // 3pt pink-deep bar, text 8pt from the bar, sand fill
-  border: { left: { style: BorderStyle.SINGLE, size: 24, color: PINK_DEEP, space: 8 } },
-  shading: { type: ShadingType.CLEAR, fill: SAND },
-};
-const QUOTE_INDENT = convertMillimetersToTwip(3);
 const quoteRun = () => (_inQuote ? QUOTE_RUN : {});
-const quoteBox = () => (_inQuote ? QUOTE_BOX : {});
+
+// Heading level used in the document: H1 (after the stripped title) → 2, H5/H6 → 4
+const headingLevelOf = depth => (depth <= 2 ? 2 : depth === 3 ? 3 : 4);
+const chapterLabel = number => `CHAPTER ${number.padStart(2, '0')}`;
+
+// Heading id → contents entry number n (bookmark `_toc_{n}`, w:id n), set per render.
+// Word bookmark names start with a letter or underscore ("_" = hidden), max 40 chars.
+let _tocBookmarks = new Map();
+const tocBookmarkName = n => `_toc_${n}`;
 
 // Heading look per level. Font/size/colour live in the Heading2-4 paragraph styles
 // (see buildStyles); only the section number carries direct formatting.
-function headingParagraph(token) {
-  const level = token.depth <= 2 ? 2 : token.depth === 3 ? 3 : 4;
+// Returns the heading paragraph, preceded by the CHAPTER label paragraph for H2.
+function headingParagraphs(token) {
+  const level = headingLevelOf(token.depth);
   const headingLevel = level === 2 ? HeadingLevel.HEADING_2
     : level === 3 ? HeadingLevel.HEADING_3
     : HeadingLevel.HEADING_4;
   const contentRuns = inlineToRuns(token.tokens, { inherit: true });
+  const paragraphs = [];
   const children = [];
 
   if (token._number) {
     if (level === 2) {
-      // H2 eyebrow: zero-padded number on its own line above the Calistoga text.
-      // Same paragraph (tab + line break) so the native TOC entry reads "01<tab>text":
-      // the TOC field (\w, no \x) keeps the tab and drops the line break.
-      const eyebrow = { font: FONT_MONO, size: 17, bold: true, color: PINK_DEEP, characterSpacing: 60 };
-      children.push(new TextRun({ text: token._number.padStart(2, '0'), ...eyebrow }));
-      children.push(new TextRun({ text: '\t', ...eyebrow }));
-      children.push(new TextRun({ break: 1 }));
+      // H2 eyebrow: "CHAPTER 01" in its own plain paragraph (not a heading, so it stays
+      // out of the outline); it carries the space before (the Heading 2 style has none)
+      paragraphs.push(new Paragraph({
+        children: [new TextRun({
+          text: chapterLabel(token._number),
+          font: FONT_MONO, size: 17, bold: true, color: PINK_DEEP, characterSpacing: 20,
+        })],
+        spacing: { before: 480, after: 40, line: 240 },
+        keepNext: true,
+        keepLines: true,
+      }));
     } else {
       children.push(new TextRun({
         text: token._number + ' ',
@@ -323,12 +330,18 @@ function headingParagraph(token) {
   }
   children.push(...contentRuns);
 
-  return new Paragraph({
+  // Bookmark the heading for its contents page PAGEREF. Start/end are built directly:
+  // docx's Bookmark gives every bookmark the same w:id
+  const n = _tocBookmarks.get(token._id);
+  paragraphs.push(new Paragraph({
     heading: headingLevel,
-    children,
+    children: n ? [new BookmarkStart(tocBookmarkName(n), n), ...children, new BookmarkEnd(n)] : children,
+    // Unnumbered H2 (a later H1) has no label paragraph to carry the space before
+    spacing: level === 2 && !token._number ? { before: 480 } : undefined,
     keepNext: true,
     keepLines: true,
-  });
+  }));
+  return paragraphs;
 }
 
 function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
@@ -337,7 +350,7 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
   for (const token of tokens) {
     switch (token.type) {
       case 'heading':
-        elements.push(headingParagraph(token));
+        elements.push(...headingParagraphs(token));
         break;
 
       case 'paragraph':
@@ -346,7 +359,6 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
         elements.push(new Paragraph({
           children: inlineToRuns(token.tokens, quoteRun()),
           spacing: { after: BODY_AFTER, line: BODY_LINE },
-          ...(_inQuote ? { ...QUOTE_BOX, indent: { left: QUOTE_INDENT } } : {}),
         }));
         break;
 
@@ -407,11 +419,37 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       }
 
       case 'blockquote': {
-        // Render all children (paragraphs, lists, ...) with italic + pink bar on sand
+        // Single-cell table, like code blocks: one continuous 3pt pink-deep bar and
+        // sand fill behind all children (paragraphs, lists, ...). Per-paragraph
+        // borders broke up in Word: list items draw the bar at their hanging indent.
         const wasInQuote = _inQuote;
         _inQuote = true;
-        elements.push(...tokensToElements(token.tokens || [], listDepth, mermaidImages));
+        const quoteChildren = tokensToElements(token.tokens || [], listDepth, mermaidImages);
         _inQuote = wasInQuote;
+        const quoteBar = { style: BorderStyle.SINGLE, size: 24, color: PINK_DEEP };
+        elements.push(new Table({
+          // Explicit DXA widths: viewers that ignore percentage widths collapse the cell
+          width: { size: CONTENT_WIDTH_TWIP, type: WidthType.DXA },
+          columnWidths: [CONTENT_WIDTH_TWIP],
+          layout: TableLayoutType.FIXED,
+          borders: { top: NO_BORDER, bottom: NO_BORDER, left: quoteBar, right: NO_BORDER, insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
+          rows: [
+            new TableRow({
+              children: [
+                new TableCell({
+                  width: { size: CONTENT_WIDTH_TWIP, type: WidthType.DXA },
+                  shading: { fill: SAND, type: ShadingType.CLEAR },
+                  // text 8pt from the bar; the last paragraph's space-after is the bottom padding
+                  margins: { top: 100, bottom: 0, left: 160, right: 160, marginUnitType: WidthType.DXA },
+                  borders: { top: NO_BORDER, bottom: NO_BORDER, right: NO_BORDER, left: quoteBar },
+                  children: quoteChildren.length ? quoteChildren : [new Paragraph({})],
+                }),
+              ],
+            }),
+          ],
+        }));
+        // Spacing after the quote (as after code blocks)
+        elements.push(new Paragraph({ spacing: { after: 120 } }));
         break;
       }
 
@@ -534,7 +572,6 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
     children: inlineToRuns(firstParaTokens, quoteRun()),
     numbering: { reference: ref, level: depth },
     spacing: { after: 80, line: BODY_LINE },
-    ...quoteBox(),
   }));
 
   // Handle remaining tokens (nested lists, extra paragraphs)
@@ -552,7 +589,6 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
           children: inlineToRuns(sub.tokens || [{ type: 'text', raw: sub.raw || '' }], quoteRun()),
           indent: { left: LIST_INDENT * (depth + 1) },
           spacing: { after: 80, line: BODY_LINE },
-          ...quoteBox(),
         }));
       } else {
         elements.push(...tokensToElements([sub], depth, mermaidImages));
@@ -741,29 +777,83 @@ function buildCoverPage(parsed) {
   return children;
 }
 
-// ── Styles ───────────────────────────────────────────────────────────────────
-// TOC styles for the native TOC field (\o "2-4": Heading 2 → TOC 2, Heading 3 → TOC 3,
-// Heading 4 → TOC 4). Word can only style a whole TOC paragraph, so the page number
-// takes the entry style; the H2 entry's tab stop puts the text in the 19.4mm column.
-function tocStyle(level, { size, color, indent, after, border }) {
-  return {
-    id: `TOC${level}`,
-    name: `toc ${level}`,
-    basedOn: 'Normal',
-    next: 'Normal',
-    run: { font: FONT_BODY, size, color },
-    paragraph: {
-      spacing: { before: 0, after, line: 240 },
-      indent: indent ? { left: indent } : undefined,
-      tabStops: [
-        { type: TabStopType.LEFT, position: TOC_TEXT_COL },
-        { type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP },
-      ],
-      border: border ? { bottom: { style: BorderStyle.SINGLE, size: 2, color: RULE, space: 3 } } : undefined,
-    },
-  };
+// ── Contents page ────────────────────────────────────────────────────────────
+// Static entries built from parsed.tocEntries instead of a native TOC field (which
+// copies the heading's direct run formatting, e.g. the CHAPTER label, into entries).
+// Page numbers stay live: PAGEREF fields to the heading bookmarks, refreshed on open.
+
+// Styled PAGEREF field with a cached placeholder. docx's PageReference can carry
+// neither run formatting nor a cached result, so the field runs are built here.
+function pageRefRuns(bookmark, style) {
+  const fldChar = (type, dirty) => new BuilderElement({
+    name: 'w:fldChar',
+    attributes: { type: { key: 'w:fldCharType', value: type }, dirty: { key: 'w:dirty', value: dirty } },
+  });
+  const instr = new BuilderElement({
+    name: 'w:instrText',
+    attributes: { space: { key: 'xml:space', value: 'preserve' } },
+    children: [` PAGEREF ${bookmark} \\h `],
+  });
+  return [
+    new TextRun({ ...style, children: [fldChar('begin', true)] }),
+    new TextRun({ ...style, children: [instr] }),
+    new TextRun({ ...style, children: [fldChar('separate')] }),
+    new TextRun({ ...style, text: '\u2013' }), // shown until Word updates the field
+    new TextRun({ ...style, children: [fldChar('end')] }),
+  ];
 }
 
+const TOC_RULE = { style: BorderStyle.SINGLE, size: 2, color: RULE, space: 3 };
+const TOC_PAGE = { font: FONT_MONO, size: 16, color: MUTED };
+
+function buildTocEntries(tocEntries) {
+  return tocEntries.map((entry, i) => {
+    const level = headingLevelOf(entry.level);
+    const bookmark = tocBookmarkName(_tocBookmarks.get(entry.id));
+    let runs;
+    let props;
+
+    if (level === 2) {
+      // "CHAPTER 01" in the 26mm number column, title plum, rule 3pt below.
+      // Word merges the borders of adjacent paragraphs with identical borders and
+      // indents (only the last keeps its bottom rule), so a 1-twip indent alternation
+      // keeps each H2 entry separate; the matching between border is the fallback.
+      const odd = i % 2;
+      runs = [
+        ...(entry.number ? [new TextRun({ text: chapterLabel(entry.number), font: FONT_MONO, size: 16, bold: true, color: PINK_DEEP })] : []),
+        new TextRun({ text: '\t' }),
+        new TextRun({ text: entry.text, font: FONT_BODY, size: 21, color: PLUM }),
+      ];
+      props = {
+        // Hanging indent: wrapped title lines continue in the text column
+        indent: { left: TOC_TEXT_COL + odd, hanging: TOC_TEXT_COL + odd },
+        tabStops: [
+          { type: TabStopType.LEFT, position: TOC_TEXT_COL },
+          { type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP },
+        ],
+        border: { bottom: TOC_RULE, between: TOC_RULE },
+        spacing: { before: 0, after: 140, line: 240 },
+      };
+    } else {
+      // H3 at the text column, H4 one list indent further: number muted, text ink
+      runs = [
+        new TextRun({ text: entry.number + ' ', font: FONT_MONO, size: 15, color: MUTED }),
+        new TextRun({ text: entry.text, font: FONT_BODY, size: 19, color: INK }),
+      ];
+      props = {
+        indent: { left: TOC_TEXT_COL + (level === 4 ? LIST_INDENT : 0) },
+        tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP }],
+        spacing: { before: 0, after: 60, line: 240 },
+      };
+    }
+    runs.push(new TextRun({ text: '\t' }), ...pageRefRuns(bookmark, TOC_PAGE));
+
+    // Whole entry clickable, like Word's own TOC
+    return new Paragraph({ ...props, children: [new InternalHyperlink({ anchor: bookmark, children: runs })] });
+  });
+}
+
+// ── Styles ───────────────────────────────────────────────────────────────────
 function buildStyles() {
   return {
     default: {
@@ -772,12 +862,12 @@ function buildStyles() {
         paragraph: { spacing: { line: BODY_LINE } },
       },
       // Heading styles replace docx's built-in Heading 2-4 definitions (same style IDs).
-      // H2: Calistoga 20pt plum; the eyebrow number above it is direct formatting
+      // H2: Calistoga 20pt plum; the CHAPTER label paragraph above it carries the space before
       heading2: {
         run: { font: FONT_TITLE, size: 40, color: PLUM, bold: false, italics: false },
         paragraph: {
           outlineLevel: 1,
-          spacing: { before: 480, after: 240, line: 264 },
+          spacing: { before: 0, after: 240, line: 264 },
           keepNext: true,
         },
       },
@@ -808,9 +898,6 @@ function buildStyles() {
         run: { font: FONT_BODY, size: BODY_SIZE, color: INK },
         paragraph: { spacing: { line: BODY_LINE, after: BODY_AFTER } },
       },
-      tocStyle(2, { size: 21, color: PLUM, after: 140, border: true }),
-      tocStyle(3, { size: 19, color: INK, indent: TOC_TEXT_COL, after: 60 }),
-      tocStyle(4, { size: 18, color: INK, indent: TOC_TEXT_COL + LIST_INDENT, after: 60 }),
     ],
   };
 }
@@ -828,9 +915,10 @@ const sectionProps = {
 
 // ── Main render function ─────────────────────────────────────────────────────
 async function renderDocx(parsed, outputFile) {
-  const { headerTitle, inputDir, tokens, classification, client, project } = parsed;
+  const { headerTitle, inputDir, tokens, tocEntries, classification, client, project } = parsed;
   _inputDir = inputDir || process.cwd();
   _orderedListIndex = 0;
+  _tocBookmarks = new Map(tocEntries.map((e, i) => [e.id, i + 1]));
 
   // Footer: {classification} · {client} · {project}, only the parts present
   const footerText = [classification, client, project].filter(Boolean).join(' · ');
@@ -854,7 +942,7 @@ async function renderDocx(parsed, outputFile) {
     headers: { default: buildHeader(headerTitle) },
     footers: { default: buildFooter(footerText) },
     children: [
-      // Plain paragraph (not a heading) so it stays out of the TOC itself
+      // Plain paragraph (not a heading) so it stays out of the outline
       new Paragraph({
         children: [new TextRun({
           text: 'CONTENTS',
@@ -866,13 +954,7 @@ async function renderDocx(parsed, outputFile) {
         })],
         spacing: { after: 200, line: 240 },
       }),
-      new TableOfContents('Table of Contents', {
-        hyperlink: true,
-        headingStyleRange: '2-4',
-        // Keep the tab between the H2 number and its text (\w); line breaks are
-        // dropped (no \x), so the H2 eyebrow line joins its heading text
-        preserveTabInEntries: true,
-      }),
+      ...buildTocEntries(tocEntries),
     ],
   };
 
@@ -904,6 +986,7 @@ async function renderDocx(parsed, outputFile) {
   const doc = new Document({
     styles: buildStyles(),
     numbering: buildNumberingConfig(countOrderedLists(tokens)),
+    // Word refreshes fields on open, filling in the contents page PAGEREFs
     features: { updateFields: true },
     sections: [coverSection, tocSection, bodySection],
   });

@@ -60,8 +60,8 @@ Top to bottom:
 ## Contents page (starts on a new page)
 
 - Label `CONTENTS` — Roboto Mono bold 8.5 pt pink deep, letter-spacing 3 pt. Space after 10.
-- **H2 entries** — section number zero-padded to two digits (`01`) in Roboto Mono bold 8 pt pink deep; tab stop at 19.4 mm; heading text Roboto 10.5 pt plum; page number right-aligned in Roboto Mono 8 pt muted. Bottom border 0.25 pt rule colour, 3 pt below the text. Space after 7.
-- **H3 entries** — indented to the 19.4 mm text column; number (`1.1`) in Roboto Mono 7.5 pt muted, text Roboto 9.5 pt ink, page number as above; no border. Space after 3.
+- **H2 entries** — `CHAPTER 01` in Roboto Mono bold 8 pt pink deep; tab stop at 26 mm; heading text Roboto 10.5 pt plum; page number right-aligned in Roboto Mono 8 pt muted. Bottom border 0.25 pt rule colour, 3 pt below the text. Space after 7.
+- **H3 entries** — indented to the 26 mm text column; number (`1.1`) in Roboto Mono 7.5 pt muted, text Roboto 9.5 pt ink, page number as above; no border. Space after 3.
 - Same heading depth as the classic TOC.
 - DOCX keeps the native Word TOC field (updates on open), with its TOC 1 / TOC 2 styles set to match the above as closely as Word allows.
 
@@ -70,7 +70,7 @@ Top to bottom:
 | Element | Style |
 |---|---|
 | Body text | Roboto 9.5 pt ink, line height 1.2, space after 6 |
-| **H2** (section `1`) | Eyebrow line: number zero-padded (`01`) in Roboto Mono bold 8.5 pt pink deep, letter-spacing 3 pt, space after 2. Then the heading text in Calistoga 20 pt plum, space after 12. Space before the eyebrow 24. No page break. Keep with next. |
+| **H2** (section `1`) | Eyebrow line: `CHAPTER 01` (number zero-padded, like the reference's `ITEM 01`) in Roboto Mono bold 8.5 pt pink deep, letter-spacing 1 pt, space after 2. Then the heading text in Calistoga 20 pt plum, space after 12. Space before the eyebrow 24. No page break. Keep with next. |
 | **H3** (section `1.1`) | Number in Roboto Mono 10 pt pink deep, a space, then text in Roboto bold 12 pt plum. Bottom border 0.75 pt pink, 3 pt below the text. Space before 14, after 6. Keep with next. |
 | **H4** (section `1.1.1`) | Number in Roboto Mono 9 pt pink deep, a space, then text in Roboto bold 10.5 pt plum soft. Space before 10, after 4. Keep with next. |
 | Bold / italic | Same colour as the surrounding text |

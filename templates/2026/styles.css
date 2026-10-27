@@ -104,7 +104,7 @@ h2 .header-section-number {
   font-family: 'Roboto Mono', monospace;
   font-size: 8.5pt;
   font-weight: 700;
-  letter-spacing: 3pt;
+  letter-spacing: 1pt;
   line-height: 1.2;
   color: var(--pink-deep);
   margin-bottom: 2pt;
@@ -556,7 +556,7 @@ hr {
   color: var(--muted);
 }
 
-/* Top-level entries (H2): "01" in a 19.4mm number column, ruled below */
+/* Top-level entries (H2): "CHAPTER 01" in a 26mm number column, ruled below */
 #TOC > ul > li > a {
   padding-bottom: 3pt;
   border-bottom: 0.25pt solid var(--rule);
@@ -564,7 +564,7 @@ hr {
 }
 
 #TOC > ul > li > a .toc-section-number {
-  flex: 0 0 19.4mm;
+  flex: 0 0 26mm;
   font-family: 'Roboto Mono', monospace;
   font-size: 8pt;
   font-weight: 700;
@@ -578,7 +578,7 @@ hr {
 
 /* Sub-entries (H3 and deeper): indented to the text column, no rule */
 #TOC ul ul {
-  padding-left: 19.4mm;
+  padding-left: 26mm;
 }
 
 #TOC ul ul ul {

@@ -40,9 +40,11 @@ const ICON_PATH     = path.join(TEMPLATES_DIR, 'icon.png');
 
 const ADDRESS = 'Cognizone BV · Avenue Arnaud Fraiteur 15-23, 1050 Ixelles, Belgium · BE 0634.615.174';
 
-// H2-level section numbers are zero-padded ("01"); deeper ones stay "1.1".
+// H2-level section numbers are a chapter label ("CHAPTER 01", like the reference's
+// "ITEM 01"); deeper ones stay "1.1". Merged master-TOC document entries pass a
+// ready-made "DOCUMENT 01" label through unchanged.
 function displayNumber(number, level) {
-  return level === 2 && /^\d$/.test(number) ? `0${number}` : number;
+  return level === 2 && /^\d+$/.test(number) ? `CHAPTER ${number.padStart(2, '0')}` : number;
 }
 
 // ── TOC HTML ──────────────────────────────────────────────────────────────────
@@ -240,7 +242,7 @@ function renderMergedPdf(parsedDocs, folderPath, outputFile) {
       level: 2,
       text: doc.title,
       id: `doc-${i}`,
-      number: `${i + 1}`,
+      number: `DOCUMENT ${String(i + 1).padStart(2, '0')}`,
     });
     for (const e of doc.tocEntries) {
       masterTocEntries.push({

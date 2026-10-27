@@ -102,9 +102,11 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// H2-level section numbers are zero-padded ("01"); deeper ones stay "1.1".
+// H2-level section numbers are a chapter label ("CHAPTER 01", like the reference's
+// "ITEM 01"); deeper ones stay "1.1". Merged master-TOC document entries pass a
+// ready-made "DOCUMENT 01" label through unchanged.
 function displayNumber(number, level) {
-  return level === 2 && /^\d$/.test(number) ? `0${number}` : number;
+  return level === 2 && /^\d+$/.test(number) ? `CHAPTER ${number.padStart(2, '0')}` : number;
 }
 
 function lockupHtml() {
@@ -492,7 +494,7 @@ body {
   min-width: 0;
 }
 
-/* Top-level entries (H2): "01" in a 19.4mm number column, ruled below */
+/* Top-level entries (H2): "CHAPTER 01" in a 26mm number column, ruled below */
 #TOC > ul > li > a {
   padding-bottom: 3pt;
   border-bottom: 0.25pt solid var(--rule);
@@ -500,7 +502,7 @@ body {
 }
 
 #TOC > ul > li > a .toc-num {
-  flex: 0 0 19.4mm;
+  flex: 0 0 26mm;
   font-family: 'Roboto Mono', monospace;
   font-size: 8pt;
   font-weight: 700;
@@ -514,7 +516,7 @@ body {
 
 /* Sub-entries (H3 and deeper): indented to the text column, no rule */
 #TOC ul ul {
-  padding-left: 19.4mm;
+  padding-left: 26mm;
 }
 
 #TOC ul ul ul {
@@ -562,7 +564,7 @@ h2 .section-num {
   font-family: 'Roboto Mono', monospace;
   font-size: 8.5pt;
   font-weight: 700;
-  letter-spacing: 3pt;
+  letter-spacing: 1pt;
   line-height: 1.2;
   color: var(--pink-deep);
   margin-bottom: 2pt;
@@ -911,7 +913,7 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   const allTocEntries = [];
   parsedDocs.forEach((d, i) => {
     const docPrefix = `doc-${i}-`;
-    allTocEntries.push({ level: 2, text: d.title, id: `${docPrefix}cover`, number: String(i + 1) });
+    allTocEntries.push({ level: 2, text: d.title, id: `${docPrefix}cover`, number: `DOCUMENT ${String(i + 1).padStart(2, '0')}` });
     d.tocEntries.forEach(e => allTocEntries.push({ ...e, level: Math.min(e.level + 1, 4), id: `${docPrefix}${e.id}`, number: `${i + 1}.${e.number}` }));
   });
 
