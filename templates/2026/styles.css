@@ -1,0 +1,627 @@
+/* Cognizone 2026 brand — PDF styles. Source of truth: reference/brand-2026-spec.md */
+
+@font-face {
+  font-family: 'Calistoga';
+  src: url('../fonts/Calistoga-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/Roboto[wdth,wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/Roboto-Italic[wdth,wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('../fonts/RobotoMono[wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('../fonts/RobotoMono-Italic[wght].ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: italic;
+}
+
+/* ── Page ─────────────────────────────────────────────────────────────────── */
+
+/* Header and footer are CSS page-margin boxes injected by pdf-print.js.
+   Cover pages use the named page `cover`: no margins, so no header/footer. */
+@page {
+  size: A4;
+  margin: 25mm 20mm 20mm 20mm;
+}
+
+@page cover {
+  margin: 0;
+}
+
+/* ── Variables ────────────────────────────────────────────────────────────── */
+
+:root {
+  --plum:      #2F2450;
+  --ink:       #2B2340;
+  --plum-soft: #4A3A78;
+  --pink-deep: #C85A8A;
+  --pink:      #E17B9E;
+  --muted:     #6B6185;
+  --blue:      #3D6BB8;
+  --sand:      #F3EBDE;
+  --cream:     #FBF6F1;
+  --rule:      #E2D8CB;
+  --white:     #FFFFFF;
+}
+
+/* ── Base ─────────────────────────────────────────────────────────────────── */
+
+body {
+  font-family: 'Roboto', sans-serif;
+  font-size: 9.5pt;
+  color: var(--ink);
+  line-height: 1.2;
+  margin: 0;
+  padding: 0;
+}
+
+/* ── Headings ─────────────────────────────────────────────────────────────── */
+
+h1 {
+  font-family: 'Calistoga', serif;
+  font-size: 20pt;
+  font-weight: 400;
+  color: var(--plum);
+  margin-top: 24pt;
+  margin-bottom: 12pt;
+  page-break-after: avoid;
+}
+
+/* H2: mono eyebrow number ("01") above a Calistoga heading */
+h2 {
+  font-family: 'Calistoga', serif;
+  font-size: 20pt;
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--plum);
+  margin-top: 24pt;
+  margin-bottom: 12pt;
+  page-break-after: avoid;
+}
+
+h2 .header-section-number {
+  display: block;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 3pt;
+  line-height: 1.2;
+  color: var(--pink-deep);
+  margin-bottom: 2pt;
+}
+
+h3 {
+  font-size: 12pt;
+  font-weight: 700;
+  color: var(--plum);
+  margin-top: 14pt;
+  margin-bottom: 6pt;
+  padding-bottom: 3pt;
+  border-bottom: 0.75pt solid var(--pink);
+  page-break-after: avoid;
+}
+
+h3 .header-section-number {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 10pt;
+  font-weight: 400;
+  color: var(--pink-deep);
+}
+
+h4, h5, h6 {
+  font-size: 10.5pt;
+  font-weight: 700;
+  color: var(--plum-soft);
+  margin-top: 10pt;
+  margin-bottom: 4pt;
+  page-break-after: avoid;
+}
+
+h4 .header-section-number,
+h5 .header-section-number,
+h6 .header-section-number {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 9pt;
+  font-weight: 400;
+  color: var(--pink-deep);
+}
+
+/* Keep headings glued to their first following block.
+   Chrome's PDF renderer honors `page-break-after: avoid` on the heading
+   only unreliably — also telling the next sibling "don't break before me"
+   gives it a second constraint to satisfy, which lands the correct layout. */
+h1, h2, h3, h4, h5, h6 {
+  break-after: avoid;
+  break-inside: avoid;            /* never strand the H2 eyebrow number */
+  page-break-inside: avoid;
+}
+h1 + *, h2 + *, h3 + *, h4 + *, h5 + *, h6 + * {
+  page-break-before: avoid;
+  break-before: avoid;
+}
+
+/* ── Body text ────────────────────────────────────────────────────────────── */
+
+p {
+  margin-top: 0;
+  margin-bottom: 6pt;
+}
+
+/* ── Inline code ──────────────────────────────────────────────────────────── */
+
+code {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
+  color: var(--pink-deep);
+  background-color: var(--sand);
+  padding: 0.5pt 3pt;
+  border-radius: 2px;
+}
+
+/* ── Code blocks ──────────────────────────────────────────────────────────── */
+
+pre {
+  background-color: var(--cream);
+  border: 0.5pt solid var(--rule);
+  border-left: 3pt solid var(--plum);
+  padding: 6pt;
+  margin: 6pt 0 8pt 0;
+  page-break-inside: avoid;
+  overflow-x: auto;
+  white-space: pre-wrap;
+}
+
+pre code {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  line-height: 1.35;
+  color: var(--plum);
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* ── Mermaid diagrams ──────────────────────────────────────────────────────── */
+
+pre.mermaid {
+  background: none;
+  border: none;
+  padding: 12pt 0;
+  text-align: center;
+  white-space: pre;
+}
+
+pre.mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Blockquote / callout ─────────────────────────────────────────────────── */
+
+blockquote {
+  margin: 6pt 0 8pt 3mm;
+  padding: 6pt 8pt;
+  border-left: 3pt solid var(--pink-deep);
+  background-color: var(--sand);
+  font-style: italic;
+  color: var(--plum-soft);
+}
+
+blockquote p,
+blockquote li {
+  color: var(--plum-soft);
+  font-style: italic;
+}
+
+blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+/* ── TODO blocks ──────────────────────────────────────────────────────────── */
+
+pre code.language-todo,
+code.todo {
+  color: #BF5700;
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────── */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8pt 0 10pt 0;
+  font-size: 8.5pt;
+  line-height: 1.05;
+  page-break-inside: avoid;
+}
+
+thead {
+  display: table-header-group;   /* repeat the header row on each page */
+}
+
+thead tr {
+  background-color: var(--plum);
+  color: var(--white);
+}
+
+thead th {
+  font-weight: 700;
+  padding: 3pt 4.5pt;
+  border: none;
+  border-bottom: 0.5pt solid var(--rule);
+  text-align: left;
+  vertical-align: bottom;
+}
+
+/* Honour column alignment from the markdown delimiter row (:---:, ---:) */
+thead th[align="center"] { text-align: center; }
+thead th[align="right"] { text-align: right; }
+
+tbody tr:nth-child(odd) {
+  background-color: var(--white);
+}
+
+tbody tr:nth-child(even) {
+  background-color: var(--cream);
+}
+
+tbody td {
+  padding: 3pt 4.5pt;
+  border: none;
+  border-bottom: 0.5pt solid var(--rule);
+  vertical-align: top;
+}
+
+/* ── Lists ────────────────────────────────────────────────────────────────── */
+
+/* 6.35mm indent per level, 4.2mm hanging; bullets/numbers in pink deep */
+ul, ol {
+  margin: 0 0 6pt 0;
+  padding-left: 6.35mm;
+}
+
+li {
+  margin-bottom: 4pt;
+  line-height: 1.2;
+}
+
+li > ul, li > ol {
+  margin-top: 4pt;
+  margin-bottom: 0;
+}
+
+li > p {
+  margin-bottom: 4pt;
+}
+
+ul {
+  list-style: none;
+}
+
+ul > li {
+  position: relative;
+}
+
+ul > li::before {
+  content: '\2022';               /* • */
+  position: absolute;
+  left: -4.2mm;
+  color: var(--pink-deep);
+  font-style: normal;
+}
+
+:is(ul, ol) ul > li::before {
+  content: '\25E6';               /* ◦ */
+}
+
+:is(ul, ol) :is(ul, ol) ul > li::before {
+  content: '\2013';               /* – */
+}
+
+ol {
+  list-style-type: decimal;
+}
+
+:is(ul, ol) ol {
+  list-style-type: lower-alpha;
+}
+
+:is(ul, ol) :is(ul, ol) ol {
+  list-style-type: lower-roman;
+}
+
+ol > li::marker {
+  color: var(--pink-deep);
+  font-style: normal;
+}
+
+ol > li {
+  padding-left: 1mm;
+}
+
+/* ── Images ───────────────────────────────────────────────────────────────── */
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* ── Links ────────────────────────────────────────────────────────────────── */
+
+a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+/* ── Horizontal rule ──────────────────────────────────────────────────────── */
+
+hr {
+  border: none;
+  border-top: 0.5pt solid var(--rule);
+  margin: 10pt 0;
+}
+
+/* ── Cover page ───────────────────────────────────────────────────────────── */
+
+/* In print the cover fills its own margin-less page (named page `cover`) so
+   the address block can sit at the page bottom. On screen (where pdf-print.js
+   measures TOC page numbers) it keeps its natural height. */
+.cover-page {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+@media print {
+  .cover-page {
+    page: cover;
+    height: 296mm;
+    padding: 20mm;
+    overflow: hidden;
+  }
+}
+
+.cover-lockup {
+  display: flex;
+  align-items: center;
+  margin: 20pt 0 80pt 0;
+  font-size: 20pt;
+  font-weight: 700;
+  color: var(--plum);
+  line-height: 1;
+}
+
+.cover-lockup img {
+  width: 17mm;
+  height: 17mm;
+  margin-right: 0.5em;            /* "two spaces" */
+}
+
+.cover-eyebrow {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 9pt;
+  letter-spacing: 3pt;
+  text-transform: uppercase;
+  color: var(--pink-deep);
+  margin: 0 0 12pt 0;
+}
+
+.cover-title-block {
+  margin: 0 0 20pt 0;
+}
+
+.cover-title,
+.cover-subtitle {
+  font-family: 'Calistoga', serif;
+  font-size: 32pt;
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--plum);
+  margin: 0;
+}
+
+.cover-subtitle {
+  color: var(--pink-deep);
+}
+
+.cover-summary {
+  font-size: 12pt;
+  line-height: 1.33;
+  color: var(--plum-soft);
+  margin: 0 0 30pt 0;
+}
+
+.cover-meta-table {
+  width: 60%;
+  border-collapse: collapse;
+  margin: 0;
+  line-height: 1.2;
+  page-break-inside: avoid;
+}
+
+.cover-meta-table tbody tr:nth-child(n) {
+  background-color: transparent;  /* no zebra on the cover table */
+}
+
+.cover-meta-table td {
+  padding: 3pt 6pt;
+  border: none;
+  border-top: 0.5pt solid var(--rule);
+  border-bottom: 0.5pt solid var(--rule);
+  vertical-align: top;
+  font-size: 9.5pt;
+  color: var(--ink);
+  background: none;
+}
+
+.cover-meta-table .meta-label {
+  width: 32%;
+  background-color: var(--sand);
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7.5pt;
+  letter-spacing: 1pt;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Merged output: the master cover lists the documents — use the full width */
+.cover-meta-table.cover-doc-list {
+  width: 100%;
+}
+
+.cover-meta-table.cover-doc-list .meta-label {
+  width: 12%;
+}
+
+.cover-bottom {
+  margin-top: auto;
+}
+
+.cover-address {
+  font-size: 8.5pt;
+  color: var(--muted);
+  margin: 0 0 3pt 0;
+}
+
+.cover-dateline {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  color: var(--muted);
+  margin: 0;
+}
+
+/* ── Table of contents ────────────────────────────────────────────────────── */
+
+.toc-label {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 3pt;
+  color: var(--pink-deep);
+  margin: 0 0 10pt 0;
+}
+
+#TOC ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+#TOC li {
+  margin: 0;
+}
+
+#TOC li::before {
+  content: none;
+}
+
+#TOC a {
+  display: flex;
+  align-items: baseline;
+  text-decoration: none;
+}
+
+#TOC .toc-title {
+  flex: 1;
+  min-width: 0;
+}
+
+#TOC .toc-page {
+  flex-shrink: 0;
+  margin-left: 8pt;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  color: var(--muted);
+}
+
+/* Top-level entries (H2): "01" in a 19.4mm number column, ruled below */
+#TOC > ul > li > a {
+  padding-bottom: 3pt;
+  border-bottom: 0.25pt solid var(--rule);
+  margin-bottom: 7pt;
+}
+
+#TOC > ul > li > a .toc-section-number {
+  flex: 0 0 19.4mm;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  font-weight: 700;
+  color: var(--pink-deep);
+}
+
+#TOC > ul > li > a .toc-title {
+  font-size: 10.5pt;
+  color: var(--plum);
+}
+
+/* Sub-entries (H3 and deeper): indented to the text column, no rule */
+#TOC ul ul {
+  padding-left: 19.4mm;
+}
+
+#TOC ul ul ul {
+  padding-left: 9mm;
+  margin-top: 3pt;
+}
+
+#TOC ul ul li {
+  margin-bottom: 3pt;
+}
+
+#TOC ul ul .toc-section-number {
+  flex: 0 0 auto;
+  min-width: 9mm;
+  padding-right: 4pt;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7.5pt;
+  color: var(--muted);
+}
+
+#TOC ul ul .toc-title {
+  font-size: 9.5pt;
+  color: var(--ink);
+}
+
+/* ── Page break ───────────────────────────────────────────────────────────── */
+
+/* Use break-before, not break-after. With break-after on an empty marker div,
+   Chromium ends up placing the (zero-height) marker on a fresh page and then
+   breaking again — producing one extra blank page per marker. With break-before
+   the marker sits at the top of the new page and the next sibling continues
+   on the same one, so no blank page is generated. */
+.page-break {
+  page-break-before: always;
+  break-before: page;
+}
+
+/* ── Strong / em ──────────────────────────────────────────────────────────── */
+
+strong {
+  font-weight: 700;
+}
+
+em {
+  font-style: italic;
+}

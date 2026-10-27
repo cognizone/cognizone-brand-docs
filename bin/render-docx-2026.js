@@ -1,0 +1,915 @@
+'use strict';
+// DOCX renderer, 2026 brand: takes parsed markdown data, produces a branded Word document.
+// Deliberately a full copy of render-docx.js (the classic brand is frozen and will be
+// deleted); styling follows reference/brand-2026-spec.md.
+
+const docx = require('docx');
+const puppeteer = require('puppeteer');
+const fs = require('fs');
+const path = require('path');
+const { parseMermaidOpts } = require('./mermaid-opts');
+
+const {
+  Document, Packer, Paragraph, TextRun, ExternalHyperlink, ImageRun,
+  Table, TableRow, TableCell, TableOfContents,
+  Header, Footer, PageNumber,
+  AlignmentType, HeadingLevel, WidthType, BorderStyle, TableLayoutType,
+  SectionType, TabStopType, ShadingType, LevelFormat, VerticalAlignTable,
+  FrameAnchorType, HorizontalPositionAlign, VerticalPositionAlign, HeightRule,
+  convertMillimetersToTwip,
+} = docx;
+
+// ── Brand constants (reference/brand-2026-spec.md) ───────────────────────────
+const PLUM      = '2F2450'; // headings, titles, table header fill, wordmark, page number
+const INK       = '2B2340'; // body text
+const PLUM_SOFT = '4A3A78'; // cover summary, blockquote text, H4
+const PINK_DEEP = 'C85A8A'; // eyebrows, section numbers, bullets, subtitle, quote bar, inline code
+const PINK      = 'E17B9E'; // H3 bottom rule
+const MUTED     = '6B6185'; // header/footer text, cover address, TOC page numbers
+const BLUE      = '3D6BB8'; // links
+const SAND      = 'F3EBDE'; // blockquote fill, inline-code fill, cover metadata labels
+const CREAM     = 'FBF6F1'; // zebra table rows, code block fill
+const RULE      = 'E2D8CB'; // table/TOC/header rules, horizontal rules, code border
+const WHITE     = 'FFFFFF';
+
+const FONT_TITLE = 'Calistoga';
+const FONT_BODY  = 'Roboto';
+const FONT_MONO  = 'Roboto Mono';
+
+// Sizes in half-points (Word), spacing in twips (pt × 20), borders in eighths of a pt
+const BODY_SIZE = 19;   // 9.5pt
+const BODY_LINE = 288;  // line height 1.2 (240 = single)
+const BODY_AFTER = 120; // 6pt
+
+const COVER_ADDRESS = 'Cognizone BV · Avenue Arnaud Fraiteur 15-23, 1050 Ixelles, Belgium · BE 0634.615.174';
+
+// marked.lexer() escapes HTML entities in code token text; unescape for DOCX output.
+function unescapeHtml(s) {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+const SCRIPT_DIR = path.join(__dirname, '..');
+const ICON_PATH  = path.join(SCRIPT_DIR, 'templates', '2026', 'icon.png');
+
+// A4, 20mm margins on all sides, header/footer 12.5mm from the edge
+const MARGIN          = convertMillimetersToTwip(20);
+const HEADER_DISTANCE = convertMillimetersToTwip(12.5);
+// Usable width in twips (A4 = 210mm, minus 20mm each side = 170mm)
+const CONTENT_WIDTH_TWIP = convertMillimetersToTwip(170);
+// TOC text column (H2 number → text tab stop, H3 indent)
+const TOC_TEXT_COL = convertMillimetersToTwip(19.4);
+// List indent per level 6.35mm, hanging 4.2mm (exact reference values)
+const LIST_INDENT  = 360;
+const LIST_HANGING = 240;
+
+// ── Mermaid rendering ────────────────────────────────────────────────────────
+const MERMAID_JS_PATH = require.resolve('mermaid/dist/mermaid.min.js');
+
+const DOCX_ALIGN = {
+  left: AlignmentType.LEFT,
+  center: AlignmentType.CENTER,
+  right: AlignmentType.RIGHT,
+};
+
+async function renderMermaidToPng(browser, code) {
+  const page = await browser.newPage();
+  await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
+  await page.setContent('<html><body style="background:#fff"><pre class="mermaid"></pre></body></html>');
+  await page.addScriptTag({ path: MERMAID_JS_PATH });
+  await page.evaluate(async (src) => {
+    document.querySelector('.mermaid').textContent = src;
+    mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
+    await mermaid.run();
+  }, code);
+  const svgEl = await page.$('.mermaid svg');
+  const box = await svgEl.boundingBox();
+  const pngBuffer = await svgEl.screenshot({ type: 'png' });
+  await page.close();
+  return { buffer: pngBuffer, width: Math.round(box.width), height: Math.round(box.height) };
+}
+
+function collectMermaidBlocks(tokens) {
+  const blocks = [];
+  for (const t of tokens) {
+    if (t.type === 'code' && parseMermaidOpts(t.lang || '').isMermaid) blocks.push(t.text);
+    if (t.tokens) blocks.push(...collectMermaidBlocks(t.tokens));
+    if (t.items) {
+      for (const item of t.items) {
+        if (item.tokens) blocks.push(...collectMermaidBlocks(item.tokens));
+      }
+    }
+  }
+  return blocks;
+}
+
+// ── Numbering definitions (bullets + ordered) ────────────────────────────────
+// Bullets and numbers are pink deep; the item text keeps the paragraph colour
+function listLevelStyle(level) {
+  return {
+    paragraph: { indent: { left: LIST_INDENT * (level + 1), hanging: LIST_HANGING } },
+    run: { color: PINK_DEEP },
+  };
+}
+
+function orderedListLevels() {
+  const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  return LEVELS.map(level => ({
+    level,
+    format: level % 3 === 0 ? LevelFormat.DECIMAL : level % 3 === 1 ? LevelFormat.LOWER_LETTER : LevelFormat.LOWER_ROMAN,
+    text: `%${level + 1}.`,
+    alignment: AlignmentType.LEFT,
+    style: listLevelStyle(level),
+  }));
+}
+
+function buildNumberingConfig(orderedListCount) {
+  // OOXML requires exactly 9 levels (0-8) per numbering definition
+  const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  const bulletChars = ['•', '◦', '–']; // •, ◦, –
+  const config = [
+    {
+      reference: 'bullet-list',
+      levels: LEVELS.map(level => ({
+        level,
+        format: LevelFormat.BULLET,
+        text: bulletChars[level % 3],
+        alignment: AlignmentType.LEFT,
+        style: listLevelStyle(level),
+      })),
+    },
+  ];
+  // Each ordered list gets its own abstract numbering definition so Word restarts from 1
+  const count = Math.max(1, orderedListCount || 1);
+  for (let i = 0; i < count; i++) {
+    config.push({ reference: `ordered-list-${i}`, levels: orderedListLevels() });
+  }
+  return { config };
+}
+
+function countOrderedLists(tokens) {
+  let count = 0;
+  for (const t of tokens) {
+    if (t.type === 'list' && t.ordered) count++;
+    if (t.items) {
+      for (const item of t.items) {
+        if (item.tokens) count += countOrderedLists(item.tokens);
+      }
+    }
+  }
+  return count;
+}
+
+// ── Inline token → TextRun conversion ────────────────────────────────────────
+let _inputDir = process.cwd();
+
+function detectImageType(filePath) {
+  const ext = path.extname(filePath).toLowerCase();
+  if (ext === '.jpg' || ext === '.jpeg') return 'jpg';
+  if (ext === '.gif') return 'gif';
+  if (ext === '.bmp') return 'bmp';
+  return 'png';
+}
+
+// Run properties for a text run. With ctx.inherit (headings) font/size/colour are
+// left to the paragraph style, so Word's TOC entries pick up the TOC styles instead
+// of the heading look (Word copies direct character formatting into TOC entries).
+function runProps(ctx) {
+  const props = {
+    bold: ctx.bold || undefined,
+    italics: ctx.italics || undefined,
+    strike: ctx.strike || undefined,
+  };
+  if (!ctx.inherit) {
+    props.font = ctx.font || FONT_BODY;
+    props.size = ctx.size || BODY_SIZE;
+    props.color = ctx.color || INK;
+  } else if (ctx.color) {
+    props.color = ctx.color;
+  }
+  return props;
+}
+
+function inlineToRuns(tokens, ctx = {}) {
+  if (!tokens || !tokens.length) return [];
+  const runs = [];
+
+  for (const t of tokens) {
+    switch (t.type) {
+      case 'text': {
+        // Text may contain nested tokens (e.g. from marked's inline lexer)
+        if (t.tokens) {
+          runs.push(...inlineToRuns(t.tokens, ctx));
+        } else {
+          runs.push(new TextRun({ text: t.raw || t.text, ...runProps(ctx) }));
+        }
+        break;
+      }
+      // Backslash escape (`\~`, `\*`, ...): emit the escaped character, not the raw pair
+      case 'escape':
+        runs.push(new TextRun({ text: t.text, ...runProps(ctx) }));
+        break;
+      case 'strong':
+        runs.push(...inlineToRuns(t.tokens, { ...ctx, bold: true }));
+        break;
+      case 'em':
+        runs.push(...inlineToRuns(t.tokens, { ...ctx, italics: true }));
+        break;
+      case 'del':
+        runs.push(...inlineToRuns(t.tokens, { ...ctx, strike: true }));
+        break;
+      case 'codespan':
+        // Inline code: Roboto Mono 8.5pt pink deep on sand
+        runs.push(new TextRun({
+          text: unescapeHtml(t.text),
+          font: FONT_MONO,
+          size: 17,
+          color: PINK_DEEP,
+          bold: ctx.bold || undefined,
+          italics: ctx.italics || undefined,
+          strike: ctx.strike || undefined,
+          shading: { type: ShadingType.CLEAR, fill: SAND },
+        }));
+        break;
+      case 'link':
+        // Links: blue, no underline
+        runs.push(new ExternalHyperlink({
+          link: t.href,
+          children: t.tokens
+            ? inlineToRuns(t.tokens, { ...ctx, color: BLUE })
+            : [new TextRun({ text: t.text, ...runProps({ ...ctx, color: BLUE }) })],
+        }));
+        break;
+      case 'image': {
+        const imgPath = t.href.startsWith('http') ? null : path.resolve(_inputDir, t.href);
+        if (imgPath && fs.existsSync(imgPath)) {
+          const imgBuf = fs.readFileSync(imgPath);
+          // Read PNG dimensions from header (offset 16=width, 20=height, 4 bytes BE)
+          const isPng = imgBuf[0] === 137 && imgBuf[1] === 80;
+          const imgW = isPng ? imgBuf.readUInt32BE(16) : 400;
+          const imgH = isPng ? imgBuf.readUInt32BE(20) : 300;
+          // Scale to max 500px wide, preserving aspect ratio
+          const scale = Math.min(1, 500 / imgW);
+          runs.push(new ImageRun({
+            type: detectImageType(imgPath),
+            data: imgBuf,
+            transformation: { width: Math.round(imgW * scale), height: Math.round(imgH * scale) },
+          }));
+        } else {
+          runs.push(new TextRun({ text: `[${t.text || t.href}]`, color: MUTED }));
+        }
+        break;
+      }
+      case 'br':
+        runs.push(new TextRun({ break: 1 }));
+        break;
+      default:
+        // Fallback: raw text
+        if (t.raw) {
+          runs.push(new TextRun({ text: t.raw, ...runProps({ ...ctx, strike: false }) }));
+        }
+    }
+  }
+  return runs;
+}
+
+// ── Block token → Paragraph/Table conversion ─────────────────────────────────
+let _orderedListIndex = 0;
+
+// Set while rendering a blockquote's children so every paragraph inside it
+// (including list items) gets the quote styling, not just the first one
+let _inQuote = false;
+const QUOTE_RUN = { italics: true, color: PLUM_SOFT };
+const QUOTE_BOX = {
+  // 3pt pink-deep bar, text 8pt from the bar, sand fill
+  border: { left: { style: BorderStyle.SINGLE, size: 24, color: PINK_DEEP, space: 8 } },
+  shading: { type: ShadingType.CLEAR, fill: SAND },
+};
+const QUOTE_INDENT = convertMillimetersToTwip(3);
+const quoteRun = () => (_inQuote ? QUOTE_RUN : {});
+const quoteBox = () => (_inQuote ? QUOTE_BOX : {});
+
+// Heading look per level. Font/size/colour live in the Heading2-4 paragraph styles
+// (see buildStyles); only the section number carries direct formatting.
+function headingParagraph(token) {
+  const level = token.depth <= 2 ? 2 : token.depth === 3 ? 3 : 4;
+  const headingLevel = level === 2 ? HeadingLevel.HEADING_2
+    : level === 3 ? HeadingLevel.HEADING_3
+    : HeadingLevel.HEADING_4;
+  const contentRuns = inlineToRuns(token.tokens, { inherit: true });
+  const children = [];
+
+  if (token._number) {
+    if (level === 2) {
+      // H2 eyebrow: zero-padded number on its own line above the Calistoga text.
+      // Same paragraph (tab + line break) so the native TOC entry reads "01<tab>text":
+      // the TOC field (\w, no \x) keeps the tab and drops the line break.
+      const eyebrow = { font: FONT_MONO, size: 17, bold: true, color: PINK_DEEP, characterSpacing: 60 };
+      children.push(new TextRun({ text: token._number.padStart(2, '0'), ...eyebrow }));
+      children.push(new TextRun({ text: '\t', ...eyebrow }));
+      children.push(new TextRun({ break: 1 }));
+    } else {
+      children.push(new TextRun({
+        text: token._number + ' ',
+        font: FONT_MONO,
+        size: level === 3 ? 20 : 18,
+        color: PINK_DEEP,
+      }));
+    }
+  }
+  children.push(...contentRuns);
+
+  return new Paragraph({
+    heading: headingLevel,
+    children,
+    keepNext: true,
+    keepLines: true,
+  });
+}
+
+function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
+  const elements = [];
+
+  for (const token of tokens) {
+    switch (token.type) {
+      case 'heading':
+        elements.push(headingParagraph(token));
+        break;
+
+      case 'paragraph':
+      // List-item continuation paragraphs arrive as block 'text' tokens with inline children
+      case 'text':
+        elements.push(new Paragraph({
+          children: inlineToRuns(token.tokens, quoteRun()),
+          spacing: { after: BODY_AFTER, line: BODY_LINE },
+          ...(_inQuote ? { ...QUOTE_BOX, indent: { left: QUOTE_INDENT } } : {}),
+        }));
+        break;
+
+      case 'code': {
+        // Mermaid diagrams → render as image
+        const mermaidOpts = parseMermaidOpts(token.lang || '');
+        if (mermaidOpts.isMermaid && mermaidImages.has(token.text)) {
+          const { buffer, width, height } = mermaidImages.get(token.text);
+          const scale = Math.min(1, mermaidOpts.maxWidth / width);
+          elements.push(new Paragraph({
+            children: [new ImageRun({
+              type: 'png',
+              data: buffer,
+              transformation: { width: Math.round(width * scale), height: Math.round(height * scale) },
+            })],
+            alignment: DOCX_ALIGN[mermaidOpts.align],
+            spacing: { before: 120, after: 120 },
+          }));
+          break;
+        }
+        // Code block as single-cell table: cream fill, 0.5pt rule border, 3pt plum
+        // left border, 6pt padding
+        const codeLines = unescapeHtml(token.text).split('\n');
+        const codeBorder = { style: BorderStyle.SINGLE, size: 4, color: RULE };
+        elements.push(new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: [
+            new TableRow({
+              children: [
+                new TableCell({
+                  shading: { fill: CREAM, type: ShadingType.CLEAR },
+                  margins: { top: 120, bottom: 120, left: 120, right: 120, marginUnitType: WidthType.DXA },
+                  borders: {
+                    top: codeBorder,
+                    bottom: codeBorder,
+                    right: codeBorder,
+                    left: { style: BorderStyle.SINGLE, size: 24, color: PLUM },
+                  },
+                  children: codeLines.map(line =>
+                    new Paragraph({
+                      children: [new TextRun({
+                        text: line || ' ',
+                        font: FONT_MONO,
+                        size: 16,
+                        color: PLUM,
+                      })],
+                      spacing: { before: 0, after: 0, line: 264 },
+                    })
+                  ),
+                }),
+              ],
+            }),
+          ],
+        }));
+        // Spacing after code block
+        elements.push(new Paragraph({ spacing: { after: 120 } }));
+        break;
+      }
+
+      case 'blockquote': {
+        // Render all children (paragraphs, lists, ...) with italic + pink bar on sand
+        const wasInQuote = _inQuote;
+        _inQuote = true;
+        elements.push(...tokensToElements(token.tokens || [], listDepth, mermaidImages));
+        _inQuote = wasInQuote;
+        break;
+      }
+
+      case 'list': {
+        // Each ordered list gets its own abstract numbering definition (unique reference)
+        // so Word restarts numbering from 1 for each separate list
+        const ref = token.ordered ? `ordered-list-${_orderedListIndex++}` : 'bullet-list';
+        for (const item of token.items) {
+          elements.push(...listItemToElements(item, ref, listDepth, mermaidImages));
+        }
+        break;
+      }
+
+      case 'table': {
+        // Full width, plum header row (repeats per page), zebra white/cream body,
+        // horizontal 0.5pt rules only. Column alignment from the delimiter row
+        // (:---:, ---:); null = left
+        const cellMargins = { top: 60, bottom: 60, left: 90, right: 90, marginUnitType: WidthType.DXA };
+        const cellPara = (runs, colIdx) => new Paragraph({
+          children: runs,
+          alignment: DOCX_ALIGN[token.align[colIdx]],
+          spacing: { before: 0, after: 0, line: 252 },
+        });
+
+        const headerCells = token.header.map((cell, colIdx) =>
+          new TableCell({
+            shading: { fill: PLUM, type: ShadingType.CLEAR },
+            borders: cellBorders(),
+            margins: cellMargins,
+            children: [cellPara(inlineToRuns(cell.tokens, { bold: true, color: WHITE, size: 17 }), colIdx)],
+          })
+        );
+
+        const bodyRows = token.rows.map((row, rowIdx) =>
+          new TableRow({
+            children: row.map((cell, colIdx) =>
+              new TableCell({
+                shading: { fill: rowIdx % 2 === 0 ? WHITE : CREAM, type: ShadingType.CLEAR },
+                borders: cellBorders(),
+                margins: cellMargins,
+                children: [cellPara(inlineToRuns(cell.tokens, { size: 17 }), colIdx)],
+              })
+            ),
+          })
+        );
+
+        elements.push(new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          borders: tableBorders(),
+          rows: [
+            new TableRow({ tableHeader: true, children: headerCells }),
+            ...bodyRows,
+          ],
+        }));
+        elements.push(new Paragraph({ spacing: { after: 120 } }));
+        break;
+      }
+
+      case 'hr':
+        elements.push(new Paragraph({
+          border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: RULE } },
+          spacing: { before: 200, after: 200 },
+        }));
+        break;
+
+      case 'space':
+        // Skip whitespace tokens
+        break;
+
+      case 'html': {
+        // Handle <img> tags; skip other HTML
+        const imgMatch = token.raw.match(/<img\s[^>]*src=["']([^"']+)["'][^>]*>/i);
+        if (imgMatch) {
+          const src = imgMatch[1];
+          const wMatch = token.raw.match(/width=["']?(\d+)["']?/i);
+          const hMatch = token.raw.match(/height=["']?(\d+)["']?/i);
+          const imgPath = src.startsWith('http') ? null : path.resolve(_inputDir, src);
+          if (imgPath && fs.existsSync(imgPath)) {
+            const imgBuf = fs.readFileSync(imgPath);
+            const isPng = imgBuf[0] === 137 && imgBuf[1] === 80;
+            let imgW = wMatch ? parseInt(wMatch[1], 10) : isPng ? imgBuf.readUInt32BE(16) : 400;
+            let imgH = hMatch ? parseInt(hMatch[1], 10) : isPng ? imgBuf.readUInt32BE(20) : 300;
+            const scale = Math.min(1, 500 / imgW);
+            elements.push(new Paragraph({
+              children: [new ImageRun({
+                type: detectImageType(imgPath),
+                data: imgBuf,
+                transformation: { width: Math.round(imgW * scale), height: Math.round(imgH * scale) },
+              })],
+              spacing: { after: 120 },
+            }));
+          }
+        }
+        break;
+      }
+
+      default:
+        // Unknown token — render as plain text if possible
+        if (token.raw) {
+          elements.push(new Paragraph({
+            children: [new TextRun({ text: token.raw, font: FONT_BODY, size: BODY_SIZE, color: INK })],
+            spacing: { after: BODY_AFTER },
+          }));
+        }
+    }
+  }
+
+  return elements;
+}
+
+function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
+  const elements = [];
+
+  // First paragraph in the list item gets the numbering
+  const firstParaTokens = item.tokens && item.tokens[0] && item.tokens[0].tokens
+    ? item.tokens[0].tokens
+    : [{ type: 'text', raw: item.text || '' }];
+
+  elements.push(new Paragraph({
+    children: inlineToRuns(firstParaTokens, quoteRun()),
+    numbering: { reference: ref, level: depth },
+    spacing: { after: 80, line: BODY_LINE },
+    ...quoteBox(),
+  }));
+
+  // Handle remaining tokens (nested lists, extra paragraphs)
+  if (item.tokens && item.tokens.length > 1) {
+    for (let i = 1; i < item.tokens.length; i++) {
+      const sub = item.tokens[i];
+      if (sub.type === 'list') {
+        const subRef = sub.ordered ? `ordered-list-${_orderedListIndex++}` : 'bullet-list';
+        for (const subItem of sub.items) {
+          elements.push(...listItemToElements(subItem, subRef, depth + 1, mermaidImages));
+        }
+      } else if (sub.type === 'text' || sub.type === 'paragraph') {
+        // Continuation paragraph: align with the item text (matches the numbering level indent)
+        elements.push(new Paragraph({
+          children: inlineToRuns(sub.tokens || [{ type: 'text', raw: sub.raw || '' }], quoteRun()),
+          indent: { left: LIST_INDENT * (depth + 1) },
+          spacing: { after: 80, line: BODY_LINE },
+          ...quoteBox(),
+        }));
+      } else {
+        elements.push(...tokensToElements([sub], depth, mermaidImages));
+      }
+    }
+  }
+
+  return elements;
+}
+
+// Horizontal 0.5pt rules only — no vertical borders
+const NO_BORDER = { style: BorderStyle.NONE, size: 0, color: 'auto' };
+function cellBorders() {
+  const b = { style: BorderStyle.SINGLE, size: 4, color: RULE };
+  return { top: b, bottom: b, left: NO_BORDER, right: NO_BORDER };
+}
+function tableBorders() {
+  const b = { style: BorderStyle.SINGLE, size: 4, color: RULE };
+  return { top: b, bottom: b, insideHorizontal: b, left: NO_BORDER, right: NO_BORDER, insideVertical: NO_BORDER };
+}
+
+function iconRun(px) {
+  return new ImageRun({
+    data: fs.readFileSync(ICON_PATH),
+    transformation: { width: px, height: px },
+    type: 'png',
+  });
+}
+
+// ── Build header/footer ──────────────────────────────────────────────────────
+function buildHeader(headerTitle) {
+  const children = [];
+
+  // Icon (4.2mm) + "Cognizone" wordmark on the left
+  if (fs.existsSync(ICON_PATH)) children.push(iconRun(16));
+  children.push(new TextRun({ text: ' Cognizone', bold: true, font: FONT_BODY, size: 17, color: PLUM }));
+
+  // Tab + `{id} - {title}` on the right
+  children.push(new TextRun({ text: '\t', font: FONT_MONO, size: 14 }));
+  children.push(new TextRun({ text: headerTitle, font: FONT_MONO, size: 14, color: MUTED }));
+
+  return new Header({
+    children: [new Paragraph({
+      children,
+      tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP }],
+      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: RULE, space: 6 } },
+      spacing: { before: 0, after: 0, line: 240 },
+    })],
+  });
+}
+
+function buildFooter(footerText) {
+  const mono = { font: FONT_MONO, size: 14 };
+  return new Footer({
+    children: [new Paragraph({
+      children: [
+        new TextRun({ text: footerText, ...mono, color: MUTED }),
+        new TextRun({ text: '\t', ...mono }),
+        new TextRun({ children: [PageNumber.CURRENT], ...mono, color: PLUM }),
+      ],
+      tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP }],
+      spacing: { before: 0, after: 0, line: 240 },
+    })],
+  });
+}
+
+// ── Cover page ───────────────────────────────────────────────────────────────
+function buildCoverPage(parsed) {
+  const { title, subtitle, summary, id, type, status, version, date, author, client, project, classification } = parsed;
+  const children = [];
+
+  // 1. Logo lockup: icon (17mm) + two spaces + "Cognizone" wordmark (live text)
+  children.push(new Paragraph({
+    children: [
+      ...(fs.existsSync(ICON_PATH) ? [iconRun(64)] : []),
+      new TextRun({ text: '  Cognizone', bold: true, font: FONT_BODY, size: 40, color: PLUM }),
+    ],
+    spacing: { before: 400, after: 1600, line: 240 },
+  }));
+
+  // 2. Eyebrow: COGNIZONE / {type|id}
+  const eyebrow = ['Cognizone', type || id].filter(Boolean).join(' / ').toUpperCase();
+  children.push(new Paragraph({
+    children: [new TextRun({ text: eyebrow, font: FONT_MONO, size: 18, color: PINK_DEEP, characterSpacing: 60 })],
+    spacing: { after: 240, line: 240 },
+  }));
+
+  // 3–4. Title (plum) + optional subtitle (pink deep), Calistoga 32pt, line height 1.1
+  children.push(new Paragraph({
+    children: [new TextRun({ text: title, font: FONT_TITLE, size: 64, color: PLUM })],
+    spacing: { after: subtitle ? 0 : 400, line: 264 },
+  }));
+  if (subtitle) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: subtitle, font: FONT_TITLE, size: 64, color: PINK_DEEP })],
+      spacing: { after: 400, line: 264 },
+    }));
+  }
+
+  // 5. Summary
+  if (summary) {
+    children.push(new Paragraph({
+      children: [new TextRun({ text: summary, font: FONT_BODY, size: 24, color: PLUM_SOFT })],
+      spacing: { after: 600, line: 320 },
+    }));
+  }
+
+  // 6. Metadata table: 60% of the text block, sand label column, horizontal rules only
+  const metaData = [
+    ['ID',      id],
+    ['Type',    type],
+    ['Status',  status],
+    ['Version', version],
+    ['Date',    date],
+    ['Author',  author],
+    ['Client',  client],
+    ['Project', project],
+  ].filter(([, v]) => v);
+
+  if (metaData.length) {
+    const tableWidth = Math.round(CONTENT_WIDTH_TWIP * 0.6);
+    const labelWidth = Math.round(tableWidth / 3);
+    const valueWidth = tableWidth - labelWidth;
+    const margins = { top: 60, bottom: 60, left: 90, right: 90, marginUnitType: WidthType.DXA };
+    children.push(new Table({
+      width: { size: tableWidth, type: WidthType.DXA },
+      columnWidths: [labelWidth, valueWidth],
+      layout: TableLayoutType.FIXED,
+      borders: tableBorders(),
+      rows: metaData.map(([label, value]) =>
+        new TableRow({
+          children: [
+            new TableCell({
+              width: { size: labelWidth, type: WidthType.DXA },
+              shading: { fill: SAND, type: ShadingType.CLEAR },
+              verticalAlign: VerticalAlignTable.CENTER,
+              margins,
+              borders: cellBorders(),
+              children: [new Paragraph({
+                children: [new TextRun({
+                  text: label.toUpperCase(), font: FONT_MONO, size: 15, color: MUTED, characterSpacing: 20,
+                })],
+                spacing: { before: 0, after: 0, line: 240 },
+              })],
+            }),
+            new TableCell({
+              width: { size: valueWidth, type: WidthType.DXA },
+              verticalAlign: VerticalAlignTable.CENTER,
+              margins,
+              borders: cellBorders(),
+              children: [new Paragraph({
+                children: [new TextRun({ text: value, font: FONT_BODY, size: BODY_SIZE, color: INK })],
+                spacing: { before: 0, after: 0, line: 240 },
+              })],
+            }),
+          ],
+        })
+      ),
+    }));
+  }
+
+  // 7. Bottom of the page: address + date line, anchored to the bottom margin with a
+  // frame. Consecutive paragraphs with identical frame properties share one frame.
+  const bottomFrame = {
+    type: 'alignment',
+    width: CONTENT_WIDTH_TWIP,
+    height: 0,
+    rule: HeightRule.AUTO,
+    anchor: { horizontal: FrameAnchorType.MARGIN, vertical: FrameAnchorType.MARGIN },
+    alignment: { x: HorizontalPositionAlign.LEFT, y: VerticalPositionAlign.BOTTOM },
+  };
+  const dateLine = [date, classification].filter(Boolean).join(' · ');
+  children.push(new Paragraph({
+    frame: bottomFrame,
+    children: [new TextRun({ text: COVER_ADDRESS, font: FONT_BODY, size: 17, color: MUTED })],
+    spacing: { before: 0, after: dateLine ? 60 : 0, line: 240 },
+  }));
+  if (dateLine) {
+    children.push(new Paragraph({
+      frame: bottomFrame,
+      children: [new TextRun({ text: dateLine, font: FONT_MONO, size: 16, color: MUTED })],
+      spacing: { before: 0, after: 0, line: 240 },
+    }));
+  }
+
+  return children;
+}
+
+// ── Styles ───────────────────────────────────────────────────────────────────
+// TOC styles for the native TOC field (\o "2-4": Heading 2 → TOC 2, Heading 3 → TOC 3,
+// Heading 4 → TOC 4). Word can only style a whole TOC paragraph, so the page number
+// takes the entry style; the H2 entry's tab stop puts the text in the 19.4mm column.
+function tocStyle(level, { size, color, indent, after, border }) {
+  return {
+    id: `TOC${level}`,
+    name: `toc ${level}`,
+    basedOn: 'Normal',
+    next: 'Normal',
+    run: { font: FONT_BODY, size, color },
+    paragraph: {
+      spacing: { before: 0, after, line: 240 },
+      indent: indent ? { left: indent } : undefined,
+      tabStops: [
+        { type: TabStopType.LEFT, position: TOC_TEXT_COL },
+        { type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP },
+      ],
+      border: border ? { bottom: { style: BorderStyle.SINGLE, size: 2, color: RULE, space: 3 } } : undefined,
+    },
+  };
+}
+
+function buildStyles() {
+  return {
+    default: {
+      document: {
+        run: { font: FONT_BODY, size: BODY_SIZE, color: INK },
+        paragraph: { spacing: { line: BODY_LINE } },
+      },
+      // Heading styles replace docx's built-in Heading 2-4 definitions (same style IDs).
+      // H2: Calistoga 20pt plum; the eyebrow number above it is direct formatting
+      heading2: {
+        run: { font: FONT_TITLE, size: 40, color: PLUM, bold: false, italics: false },
+        paragraph: {
+          outlineLevel: 1,
+          spacing: { before: 480, after: 240, line: 264 },
+          keepNext: true,
+        },
+      },
+      // H3: Roboto bold 12pt plum, 0.75pt pink rule 3pt below
+      heading3: {
+        run: { font: FONT_BODY, size: 24, color: PLUM, bold: true, italics: false },
+        paragraph: {
+          outlineLevel: 2,
+          spacing: { before: 280, after: 120, line: 264 },
+          keepNext: true,
+          border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: PINK, space: 3 } },
+        },
+      },
+      // H4: Roboto bold 10.5pt plum soft
+      heading4: {
+        run: { font: FONT_BODY, size: 21, color: PLUM_SOFT, bold: true, italics: false },
+        paragraph: {
+          outlineLevel: 3,
+          spacing: { before: 200, after: 80, line: 264 },
+          keepNext: true,
+        },
+      },
+    },
+    paragraphStyles: [
+      {
+        id: 'Normal',
+        name: 'Normal',
+        run: { font: FONT_BODY, size: BODY_SIZE, color: INK },
+        paragraph: { spacing: { line: BODY_LINE, after: BODY_AFTER } },
+      },
+      tocStyle(2, { size: 21, color: PLUM, after: 140, border: true }),
+      tocStyle(3, { size: 19, color: INK, indent: TOC_TEXT_COL, after: 60 }),
+      tocStyle(4, { size: 18, color: INK, indent: TOC_TEXT_COL + LIST_INDENT, after: 60 }),
+    ],
+  };
+}
+
+// ── Section properties ───────────────────────────────────────────────────────
+const sectionProps = {
+  page: {
+    size: { width: 11906, height: 16838 }, // A4 in twips
+    margin: {
+      top: MARGIN, bottom: MARGIN, left: MARGIN, right: MARGIN,
+      header: HEADER_DISTANCE, footer: HEADER_DISTANCE,
+    },
+  },
+};
+
+// ── Main render function ─────────────────────────────────────────────────────
+async function renderDocx(parsed, outputFile) {
+  const { headerTitle, inputDir, tokens, classification, client, project } = parsed;
+  _inputDir = inputDir || process.cwd();
+  _orderedListIndex = 0;
+
+  // Footer: {classification} · {client} · {project}, only the parts present
+  const footerText = [classification, client, project].filter(Boolean).join(' · ');
+
+  // Cover page section (no header/footer — omit headers/footers entirely;
+  // setting empty Header({children:[]}) poisons subsequent sections)
+  const coverSection = {
+    properties: {
+      ...sectionProps,
+      type: SectionType.NEXT_PAGE,
+    },
+    children: buildCoverPage(parsed),
+  };
+
+  // TOC section
+  const tocSection = {
+    properties: {
+      ...sectionProps,
+      type: SectionType.NEXT_PAGE,
+    },
+    headers: { default: buildHeader(headerTitle) },
+    footers: { default: buildFooter(footerText) },
+    children: [
+      // Plain paragraph (not a heading) so it stays out of the TOC itself
+      new Paragraph({
+        children: [new TextRun({
+          text: 'CONTENTS',
+          bold: true,
+          font: FONT_MONO,
+          size: 17,
+          color: PINK_DEEP,
+          characterSpacing: 60,
+        })],
+        spacing: { after: 200, line: 240 },
+      }),
+      new TableOfContents('Table of Contents', {
+        hyperlink: true,
+        headingStyleRange: '2-4',
+        // Keep the tab between the H2 number and its text (\w); line breaks are
+        // dropped (no \x), so the H2 eyebrow line joins its heading text
+        preserveTabInEntries: true,
+      }),
+    ],
+  };
+
+  // Pre-render mermaid diagrams to PNG
+  const mermaidImages = new Map();
+  const mermaidCodes = collectMermaidBlocks(tokens);
+  if (mermaidCodes.length > 0) {
+    const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+    for (const code of mermaidCodes) {
+      if (!mermaidImages.has(code)) {
+        mermaidImages.set(code, await renderMermaidToPng(browser, code));
+      }
+    }
+    await browser.close();
+  }
+
+  // Body section
+  const bodyElements = tokensToElements(tokens, 0, mermaidImages);
+  const bodySection = {
+    properties: {
+      ...sectionProps,
+      type: SectionType.NEXT_PAGE,
+    },
+    headers: { default: buildHeader(headerTitle) },
+    footers: { default: buildFooter(footerText) },
+    children: bodyElements,
+  };
+
+  const doc = new Document({
+    styles: buildStyles(),
+    numbering: buildNumberingConfig(countOrderedLists(tokens)),
+    features: { updateFields: true },
+    sections: [coverSection, tocSection, bodySection],
+  });
+
+  const buffer = await Packer.toBuffer(doc);
+  fs.writeFileSync(outputFile, buffer);
+}
+
+module.exports = { renderDocx };

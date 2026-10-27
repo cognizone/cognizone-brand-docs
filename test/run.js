@@ -490,6 +490,68 @@ try {
   assert('edge: unknown format rejected', true);
 }
 
+// ── 2026 brand (--brand 2026) ────────────────────────────────────────────────
+// ponytail: delete the classic-vs-2026 split here when the classic brand goes
+const brand2026Md = path.join(OUT_DIR, 'brand-2026.md');
+fs.writeFileSync(brand2026Md, fs.readFileSync(FIXTURE, 'utf8').replace(
+  /^---\n/, '---\nsubtitle: "Second title line"\nsummary: "Cover summary paragraph."\nclassification: Confidential\n'));
+
+for (const format of ['pdf', 'docx', 'html']) {
+  const out = path.join(OUT_DIR, `brand-2026.${format}`);
+  try {
+    execFileSync(process.execPath, [CONVERT, brand2026Md, out, '--format', format, '--brand', '2026'], { stdio: 'pipe' });
+    assert(`2026 ${format}: file created`, fs.existsSync(out) && fs.statSync(out).size > 10000);
+  } catch (e) {
+    assert(`2026 ${format}: generation succeeds`, false, e.stderr?.toString() || e.message);
+  }
+}
+
+try {
+  const docXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/document.xml']).toString();
+  const ftrXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/footer*.xml']).toString();
+  assert('2026 docx: Calistoga title in plum', docXml.includes('Calistoga') && docXml.includes('2F2450'));
+  assert('2026 docx: subtitle and summary on cover',
+    docXml.includes('>Second title line<') && docXml.includes('>Cover summary paragraph.<'));
+  assert('2026 docx: classification in footer', ftrXml.includes('Confidential'));
+  assert('2026 docx: classic green not used', !docXml.includes('058775'));
+  const centred = docXml.split('</w:p>').find(p => p.includes('>pending<')) || '';
+  assert('2026 docx: centred table column is centred', centred.includes('<w:jc w:val="center"/>'));
+  const quoted = docXml.split('</w:p>').find(p => p.includes('>Quoted list item two<')) || '';
+  assert('2026 docx: blockquote list rendered', quoted.includes('<w:i/>'));
+} catch (e) {
+  assert('2026 docx: content checks', false, e.message);
+}
+
+try {
+  const html = fs.readFileSync(path.join(OUT_DIR, 'brand-2026.html'), 'utf8');
+  assert('2026 html: Calistoga embedded', /@font-face\s*{[^}]*Calistoga/.test(html));
+  assert('2026 html: plum brand colour', /#2F2450/i.test(html));
+  assert('2026 html: subtitle and summary on cover',
+    html.includes('Second title line') && html.includes('Cover summary paragraph.'));
+  assert('2026 html: no external requests', !/(src|href)=["']https?:\/\/(?!cogni\.zone)/.test(html.replace(/<a [^>]*>/g, '')));
+} catch (e) {
+  assert('2026 html: content checks', false, e.message);
+}
+
+// `brand: 2026` in frontmatter selects the brand without the flag
+try {
+  const fmMd = path.join(OUT_DIR, 'brand-fm.md');
+  fs.writeFileSync(fmMd, '---\ntitle: FM brand\nbrand: 2026\n---\n\n## One\n\nText.\n');
+  const out = path.join(OUT_DIR, 'brand-fm.docx');
+  execFileSync(process.execPath, [CONVERT, fmMd, out, '--format', 'docx'], { stdio: 'pipe' });
+  const xml = execFileSync('unzip', ['-p', out, 'word/document.xml']).toString();
+  assert('2026: frontmatter brand selects 2026', xml.includes('Calistoga'));
+} catch (e) {
+  assert('2026: frontmatter brand selects 2026', false, e.stderr?.toString() || e.message);
+}
+
+try {
+  execFileSync(process.execPath, [CONVERT, FIXTURE, '/dev/null', '--brand', 'nope'], { stdio: 'pipe' });
+  assert('edge: unknown brand rejected', false, 'should have thrown');
+} catch {
+  assert('edge: unknown brand rejected', true);
+}
+
 // ── Report ───────────────────────────────────────────────────────────────────
 console.log('');
 for (const t of tests) {

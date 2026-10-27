@@ -21,6 +21,8 @@ When a folder is given, all .md files are merged into a single PDF or HTML file.
 Options:
   -f, --format <pdf|docx|html>  Output format (default: pdf)
                                 Folder input supports pdf and html.
+  -b, --brand <classic|2026>    Brand (default: classic, or the document's
+                                \`brand:\` frontmatter field)
   -v, --version                 Print version and exit
   -h, --help                    Show this help message
 
@@ -30,6 +32,7 @@ Examples:
   cognizone-convert document.md --format html
   cognizone-convert document.md output.pdf
   cognizone-convert document.md -f docx
+  cognizone-convert document.md --brand 2026   # new 2026 brand
   cognizone-convert docs/                      # merge folder → PDF
   cognizone-convert docs/ -f html              # merge folder → HTML
   cognizone-convert docs/ merged-output.pdf

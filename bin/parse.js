@@ -39,6 +39,11 @@ function parseMarkdown(inputFile) {
   const author      = String(fm.author  || '');
   const client      = String(fm.client  || '');
   const project     = String(fm.project || '');
+  // 2026 brand cover/footer fields (ignored by the classic brand)
+  const subtitle       = String(fm.subtitle       || '');
+  const summary        = String(fm.summary        || '');
+  const classification = String(fm.classification || '');
+  const brand          = String(fm.brand          || '');
   const headerTitle = id ? `${id} - ${title}` : title;
   const footerTitle = [client, project].filter(Boolean).join(' \u00B7 ');
 
@@ -92,6 +97,7 @@ function parseMarkdown(inputFile) {
 
   return {
     fm, title, id, type, status, version, date, author, client, project, headerTitle, footerTitle,
+    subtitle, summary, classification, brand,
     inputDir: path.dirname(inputFile), tokens, tocEntries, mdNoH1,
   };
 }

@@ -67,6 +67,27 @@ project: REG+
 
 All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`.
 
+## 2026 brand (`--brand 2026`)
+
+The new Cognizone brand (plum / cream, Calistoga titles) runs in parallel with the current one while it is phased in:
+
+```bash
+cognizone-convert document.md --brand 2026              # PDF in the 2026 brand
+cognizone-convert document.md -b 2026 -f docx           # Word in the 2026 brand
+```
+
+Or set `brand: 2026` in the document's frontmatter. The current brand stays the default until the switch-over.
+
+Extra optional frontmatter fields used by the 2026 cover and footer:
+
+| Field | Use |
+|---|---|
+| `subtitle` | Second title line, in pink |
+| `summary` | Paragraph under the title |
+| `classification` | e.g. `Confidential`, shown on the cover and in the footer |
+
+For Word output, also install [Calistoga](https://fonts.google.com/specimen/Calistoga) on the machine opening the `.docx`. The style spec is [`reference/brand-2026-spec.md`](reference/brand-2026-spec.md); the logo pack is in [`assets/brand-2026/`](assets/brand-2026/).
+
 ## Sizing mermaid diagrams
 
 Add options to the fence line to control per-diagram width and alignment. Applies to PDF, DOCX, and HTML output.

@@ -95,6 +95,16 @@ HTML brand CSS lives in `render-html.js` (`STYLES` constant), mirroring `templat
 - **`heading(innerHtml)`** — receives already-rendered inner HTML (post-processor). To correlate with token data, use `walkTokens` to collect heading metadata in order, then match by index in the renderer override.
 - **`code(text, lang, escaped)`** — receives raw code text, language string, and escaped flag as separate arguments. Return HTML string directly.
 
+## 2026 brand (parallel, temporary)
+
+`--brand 2026` (or frontmatter `brand: 2026`) routes to full copies of the renderers: `bin/render-pdf-2026.js`, `bin/render-docx-2026.js`, `bin/render-html-2026.js`, `templates/2026/` (styles.css, pdf-print.js, icon.png). Routing lives in `bin/convert.js` (`renderer()`). Default is `classic`.
+
+- The classic brand is **frozen** and will be deleted in late 2026 / early 2027: fix bugs in the 2026 files only. Removal = delete the classic renderers/templates, rename the `-2026` files, drop the `--brand` switch and its tests.
+- Styling source of truth: `reference/brand-2026-spec.md` (measured from `reference/brand-2026-reference.docx`, a content-free copy of a real 2026 document). `reference/private/` is git-ignored and holds the confidential original — never commit or quote it.
+- Logo pack as delivered: `assets/brand-2026/` (not shipped in the npm package; the renderers use `templates/2026/icon.png`).
+- Extra frontmatter fields (ignored by classic): `subtitle`, `summary`, `classification`.
+- PDF header/footer are drawn with CSS `@page` margin boxes (not Puppeteer templates) so the cover can have none; needs Chrome ≥ 131 (bundled with puppeteer 24).
+
 ## Document Frontmatter
 
 Input Markdown files should have YAML frontmatter:

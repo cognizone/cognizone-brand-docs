@@ -10,11 +10,14 @@ const { parseMarkdown } = require('./parse');
 // ── Parse arguments ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 let format = 'pdf';
+let brandArg;
 let inputArg, outputArg;
 
 for (let i = 0; i < args.length; i++) {
   if ((args[i] === '--format' || args[i] === '-f') && args[i + 1]) {
     format = args[++i].toLowerCase();
+  } else if ((args[i] === '--brand' || args[i] === '-b') && args[i + 1]) {
+    brandArg = args[++i].toLowerCase();
   } else if (!inputArg) {
     inputArg = args[i];
   } else if (!outputArg) {
@@ -23,7 +26,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!inputArg) {
-  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html]');
+  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand classic|2026]');
   process.exit(1);
 }
 
@@ -31,6 +34,26 @@ if (!['pdf', 'docx', 'html'].includes(format)) {
   console.error(`Unknown format: ${format}. Supported: pdf, docx, html`);
   process.exit(1);
 }
+
+// ponytail: two brands only while the classic one is phased out — delete the
+// classic renderers and this switch when it goes
+const BRANDS = ['classic', '2026'];
+if (brandArg && !BRANDS.includes(brandArg)) {
+  console.error(`Unknown brand: ${brandArg}. Supported: ${BRANDS.join(', ')}`);
+  process.exit(1);
+}
+
+// --brand wins; otherwise the (first) document's `brand:` frontmatter; default classic
+function pickBrand(parsed) {
+  const brand = brandArg || String(parsed.brand || 'classic').toLowerCase();
+  if (!BRANDS.includes(brand)) {
+    console.error(`Unknown brand in frontmatter: ${brand}. Supported: ${BRANDS.join(', ')}`);
+    process.exit(1);
+  }
+  return brand;
+}
+
+const renderer = (name, brand) => require(brand === '2026' ? `./${name}-2026` : `./${name}`);
 
 const inputPath = path.resolve(inputArg);
 
@@ -73,11 +96,12 @@ async function main() {
     const ext = format === 'html' ? '.html' : '.pdf';
     const outputFile = path.resolve(outputArg || `${folderName}${ext}`);
 
+    const brand = pickBrand(parsedDocs[0]);
     if (format === 'html') {
-      const { renderMergedHtml } = require('./render-html');
+      const { renderMergedHtml } = renderer('render-html', brand);
       renderMergedHtml(parsedDocs, inputPath, outputFile);
     } else {
-      const { renderMergedPdf } = require('./render-pdf');
+      const { renderMergedPdf } = renderer('render-pdf', brand);
       renderMergedPdf(parsedDocs, inputPath, outputFile);
     }
     console.log(`Written: ${outputFile}`);
@@ -85,15 +109,16 @@ async function main() {
     const ext = format === 'docx' ? '.docx' : format === 'html' ? '.html' : '.pdf';
     const outputFile = path.resolve(outputArg || inputPath.replace(/\.md$/, ext));
     const parsed = parseMarkdown(inputPath);
+    const brand = pickBrand(parsed);
 
     if (format === 'docx') {
-      const { renderDocx } = require('./render-docx');
+      const { renderDocx } = renderer('render-docx', brand);
       await renderDocx(parsed, outputFile);
     } else if (format === 'html') {
-      const { renderHtml } = require('./render-html');
+      const { renderHtml } = renderer('render-html', brand);
       renderHtml(parsed, outputFile);
     } else {
-      const { renderPdf } = require('./render-pdf');
+      const { renderPdf } = renderer('render-pdf', brand);
       renderPdf(parsed, outputFile);
     }
 
