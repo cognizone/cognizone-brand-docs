@@ -258,6 +258,17 @@ function inlineToRuns(tokens, ctx = {}) {
 // ── Block token → Paragraph/Table conversion ─────────────────────────────────
 let _orderedListIndex = 0;
 
+// Set while rendering a blockquote's children so every paragraph inside it
+// (including list items) gets the quote styling, not just the first one
+let _inQuote = false;
+const QUOTE_RUN = { italics: true, color: GRAY };
+const QUOTE_BOX = {
+  border: { left: { style: BorderStyle.SINGLE, size: 8, color: GREEN } },
+  shading: { type: ShadingType.CLEAR, fill: 'F9F9F9' },
+};
+const quoteRun = () => (_inQuote ? QUOTE_RUN : {});
+const quoteBox = () => (_inQuote ? QUOTE_BOX : {});
+
 function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
   const elements = [];
 
@@ -307,8 +318,9 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       // List-item continuation paragraphs arrive as block 'text' tokens with inline children
       case 'text':
         elements.push(new Paragraph({
-          children: inlineToRuns(token.tokens),
+          children: inlineToRuns(token.tokens, quoteRun()),
           spacing: { after: 120, line: 360 },
+          ...(_inQuote ? { ...QUOTE_BOX, indent: { left: convertMillimetersToTwip(5) } } : {}),
         }));
         break;
 
@@ -366,31 +378,11 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       }
 
       case 'blockquote': {
-        // Render blockquote children with italic style and green left border
-        const bqChildren = token.tokens
-          ? tokensToElements(token.tokens, 0, mermaidImages)
-          : [new Paragraph({ children: [new TextRun({ text: token.raw || '' })] })];
-
-        // Wrap each child paragraph with blockquote styling
-        for (const child of bqChildren) {
-          if (child instanceof Paragraph) {
-            elements.push(new Paragraph({
-              children: inlineToRuns(
-                token.tokens && token.tokens[0] && token.tokens[0].tokens
-                  ? token.tokens[0].tokens
-                  : [{ type: 'text', raw: token.raw || '' }],
-                { italics: true, color: GRAY }
-              ),
-              indent: { left: convertMillimetersToTwip(5) },
-              border: {
-                left: { style: BorderStyle.SINGLE, size: 8, color: GREEN },
-              },
-              shading: { type: ShadingType.CLEAR, fill: 'F9F9F9' },
-              spacing: { after: 120, line: 360 },
-            }));
-            break; // Only first paragraph for simple blockquotes
-          }
-        }
+        // Render all children (paragraphs, lists, ...) with italic + green left border
+        const wasInQuote = _inQuote;
+        _inQuote = true;
+        elements.push(...tokensToElements(token.tokens || [], listDepth, mermaidImages));
+        _inQuote = wasInQuote;
         break;
       }
 
@@ -506,9 +498,10 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
     : [{ type: 'text', raw: item.text || '' }];
 
   elements.push(new Paragraph({
-    children: inlineToRuns(firstParaTokens),
+    children: inlineToRuns(firstParaTokens, quoteRun()),
     numbering: { reference: ref, level: depth },
     spacing: { after: 40, line: 360 },
+    ...quoteBox(),
   }));
 
   // Handle remaining tokens (nested lists, extra paragraphs)
@@ -523,9 +516,10 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
       } else if (sub.type === 'text' || sub.type === 'paragraph') {
         // Continuation paragraph: align with the item text (matches the numbering level indent)
         elements.push(new Paragraph({
-          children: inlineToRuns(sub.tokens || [{ type: 'text', raw: sub.raw || '' }]),
+          children: inlineToRuns(sub.tokens || [{ type: 'text', raw: sub.raw || '' }], quoteRun()),
           indent: { left: convertMillimetersToTwip(5 * (depth + 1)) },
           spacing: { after: 120, line: 360 },
+          ...quoteBox(),
         }));
       } else {
         elements.push(...tokensToElements([sub], depth, mermaidImages));

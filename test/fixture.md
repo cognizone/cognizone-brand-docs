@@ -112,6 +112,11 @@ Inline code with brackets: `<html>` & `a < b`.
 > Multi-line blockquote that spans more than one line to verify that longer
 > content wraps properly and maintains consistent styling throughout.
 
+> **Sources:**
+>
+> - Quoted list item one
+> - Quoted list item two
+
 ## Images
 
 An inline image reference:

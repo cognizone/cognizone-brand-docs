@@ -149,6 +149,10 @@ try {
   const pendingPara = docXml.split('</w:p>').find(p => p.includes('>pending<')) || '';
   assert('docx: centred table column is centred',
     pendingPara.includes('<w:jc w:val="center"/>'), 'cell paragraph has no center justification');
+  // Regression: blockquote content after the first paragraph (e.g. a list) is not dropped
+  const quotedItem = docXml.split('</w:p>').find(p => p.includes('>Quoted list item two<')) || '';
+  assert('docx: blockquote list rendered with quote styling',
+    quotedItem.includes('F9F9F9') && quotedItem.includes('<w:i/>'), 'quoted list item missing or unstyled');
 } catch (e) {
   assert('docx: generation succeeds', false, e.stderr?.toString() || e.message);
 }
