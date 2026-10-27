@@ -166,6 +166,7 @@ function inlineToRuns(tokens, ctx = {}) {
             text: t.raw || t.text,
             bold: ctx.bold || false,
             italics: ctx.italics || false,
+            strike: ctx.strike || false,
             font: ctx.font || FONT_BODY,
             size: ctx.size || 20,
             color: ctx.color || DARK,
@@ -173,11 +174,26 @@ function inlineToRuns(tokens, ctx = {}) {
         }
         break;
       }
+      // Backslash escape (`\~`, `\*`, ...): emit the escaped character, not the raw pair
+      case 'escape':
+        runs.push(new TextRun({
+          text: t.text,
+          bold: ctx.bold || false,
+          italics: ctx.italics || false,
+          strike: ctx.strike || false,
+          font: ctx.font || FONT_BODY,
+          size: ctx.size || 20,
+          color: ctx.color || DARK,
+        }));
+        break;
       case 'strong':
         runs.push(...inlineToRuns(t.tokens, { ...ctx, bold: true }));
         break;
       case 'em':
         runs.push(...inlineToRuns(t.tokens, { ...ctx, italics: true }));
+        break;
+      case 'del':
+        runs.push(...inlineToRuns(t.tokens, { ...ctx, strike: true }));
         break;
       case 'codespan':
         runs.push(new TextRun({
@@ -187,6 +203,7 @@ function inlineToRuns(tokens, ctx = {}) {
           color: MONO_GREEN,
           bold: ctx.bold || false,
           italics: ctx.italics || false,
+          strike: ctx.strike || false,
           shading: { type: ShadingType.CLEAR, fill: 'F5F5F5' },
         }));
         break;
