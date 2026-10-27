@@ -7,3 +7,6 @@ test/output/*
 !test/output/fixture.pdf
 !test/output/fixture.docx
 
+
+# Confidential reference documents (local only)
+reference/private/

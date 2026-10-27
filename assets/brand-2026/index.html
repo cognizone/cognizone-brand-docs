@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Cognizone — Logo Pack</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<link rel="icon" href="favicon/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Calistoga&family=Nunito:wght@400;500;700;800&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --plum:#2F2450; --cream:#FBF6F1; --pink:#E17B9E; --pink-d:#C85A8A;
+    --teal:#49C6D4; --cyan:#5BB8E2; --blue:#3D6BB8; --blue-d:#3450A0; --purple:#9B5DB8;
+    --ink:var(--plum); --dim:rgba(47,36,80,.6); --rule:rgba(47,36,80,.14);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{background:var(--cream);color:var(--ink);font-family:'Nunito',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+  a{color:inherit}
+
+  .wrap{max-width:1280px;margin:0 auto;padding:36px 40px 120px}
+  header{padding:60px 0 40px;border-bottom:1px solid var(--rule)}
+  .eyebrow{display:inline-flex;align-items:center;gap:10px;font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--pink-d);margin-bottom:24px}
+  .eyebrow::before{content:"";width:8px;height:8px;background:var(--pink-d);transform:rotate(45deg)}
+  h1{font-family:'Calistoga',serif;font-size:clamp(44px,7vw,84px);line-height:.95;letter-spacing:-.025em;font-weight:400;max-width:18ch}
+  h1 em{font-style:italic;color:var(--pink-d)}
+  .lede{font-size:18px;color:var(--dim);max-width:54ch;margin-top:24px;line-height:1.55;font-weight:400}
+
+  .top-actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:36px}
+  .btn{display:inline-flex;align-items:center;gap:10px;padding:14px 22px;border-radius:999px;font-weight:700;font-size:14px;border:1px solid var(--plum);background:var(--plum);color:var(--cream);cursor:pointer;text-decoration:none;transition:transform .2s}
+  .btn.ghost{background:transparent;color:var(--plum)}
+  .btn:hover{transform:translateY(-2px)}
+
+  section.section{padding:60px 0;border-bottom:1px solid var(--rule)}
+  h2.sect{font-family:'Calistoga',serif;font-size:44px;letter-spacing:-.02em;font-weight:400;line-height:1.05;margin-bottom:8px}
+  h2.sect em{font-style:italic;color:var(--pink-d)}
+  p.sect-sub{color:var(--dim);max-width:54ch;margin-bottom:40px;line-height:1.55}
+
+  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px}
+  @media (max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+  .card{border:1px solid var(--rule);border-radius:16px;overflow:hidden;background:#fff;display:flex;flex-direction:column;transition:border-color .2s,transform .2s}
+  .card:hover{border-color:var(--pink-d);transform:translateY(-2px)}
+  .card .stage{aspect-ratio:1.1/1;display:flex;align-items:center;justify-content:center;padding:28px;position:relative}
+  .card .stage.dark{background:var(--plum)}
+  .card .stage.light{background:var(--cream)}
+  .card .stage img{max-width:100%;max-height:100%;display:block}
+  .card .meta{padding:18px 20px;border-top:1px solid var(--rule);display:flex;flex-direction:column;gap:4px}
+  .card .meta .t{font-weight:700;font-size:14px;letter-spacing:-.01em}
+  .card .meta .s{font-family:'Roboto Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+  .card .dl{padding:12px 20px;border-top:1px solid var(--rule);display:flex;gap:6px;flex-wrap:wrap;background:#FAFAF7}
+  .card .dl a{font-family:'Roboto Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border:1px solid var(--rule);border-radius:999px;color:var(--plum);text-decoration:none;background:#fff;transition:background .15s,color .15s,border-color .15s}
+  .card .dl a:hover{background:var(--plum);color:var(--cream);border-color:var(--plum)}
+
+  /* Color swatches */
+  .swatches{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  @media(max-width:900px){.swatches{grid-template-columns:repeat(3,1fr)}}
+  .sw{border:1px solid var(--rule);border-radius:12px;overflow:hidden}
+  .sw .block{aspect-ratio:2/1;display:flex;align-items:flex-end;justify-content:space-between;padding:12px 14px;color:#fff;font-family:'Roboto Mono',monospace;font-size:10px;letter-spacing:.1em}
+  .sw .info{padding:10px 14px;display:flex;justify-content:space-between;font-size:12px}
+  .sw .info .name{font-weight:700}
+  .sw .info .hex{font-family:'Roboto Mono',monospace;color:var(--dim);font-size:11px}
+
+  footer{padding:40px 0;display:flex;justify-content:space-between;font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <nav style="display:flex;justify-content:space-between;align-items:center;padding:14px 0;font-family:'Roboto Mono',monospace;font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--dim)">
+    <a href="index.html" style="display:flex;align-items:center;gap:10px;color:var(--plum);text-decoration:none;font-family:'Nunito',sans-serif;font-weight:800;font-size:18px;letter-spacing:-.01em;text-transform:none">
+      <img src="svg/icon/cognizone-icon-color-light.svg" width="26" height="26" alt=""/> Cognizone
+    </a>
+    <span>Logo pack · v1.0 · Apr 2026</span>
+  </nav>
+
+  <header>
+    <div class="eyebrow">Logo 02 · Official release</div>
+    <h1>Every version of the <em>Cognizone</em> mark, in one place.</h1>
+    <p class="lede">Full-colour, monochrome, horizontal, stacked, icon-only, wordmark-only — packaged as SVG, PNG at multiple sizes, print-ready PDFs, and a complete favicon bundle. Download what you need, or grab the whole archive.</p>
+
+    <div class="top-actions">
+      <a class="btn" href="cognizone-logo-pack.zip" download>Download full pack (.zip)</a>
+      <a class="btn ghost" href="README.md">Read the brand notes</a>
+    </div>
+  </header>
+
+  <!-- ICON -->
+  <section class="section">
+    <h2 class="sect">Icon — <em>no wordmark</em></h2>
+    <p class="sect-sub">For favicons, app tiles, social avatars, and anywhere the wordmark wouldn't be legible. Clear-space rule: one node-diameter on each side.</p>
+    <div class="grid">
+      <div class="card"><div class="stage light"><img src="svg/icon/cognizone-icon-color-light.svg" alt=""/></div>
+        <div class="meta"><span class="t">Full color · light</span><span class="s">COLOR-LIGHT · ICON</span></div>
+        <div class="dl"><a href="svg/icon/cognizone-icon-color-light.svg" download>SVG</a><a href="png/icon/512/cognizone-icon-color-light-512.png" download>PNG 512</a><a href="png/icon/1024/cognizone-icon-color-light-1024.png" download>PNG 1024</a><a href="pdf/icon/cognizone-icon-color-light.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage dark"><img src="svg/icon/cognizone-icon-color-dark.svg" alt=""/></div>
+        <div class="meta"><span class="t">Full color · dark</span><span class="s">COLOR-DARK · ICON</span></div>
+        <div class="dl"><a href="svg/icon/cognizone-icon-color-dark.svg" download>SVG</a><a href="png/icon/512/cognizone-icon-color-dark-512.png" download>PNG 512</a><a href="png/icon/1024/cognizone-icon-color-dark-1024.png" download>PNG 1024</a><a href="pdf/icon/cognizone-icon-color-dark.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage light"><img src="svg/icon/cognizone-icon-mono-black.svg" alt=""/></div>
+        <div class="meta"><span class="t">Mono black</span><span class="s">MONO-BLACK · ICON</span></div>
+        <div class="dl"><a href="svg/icon/cognizone-icon-mono-black.svg" download>SVG</a><a href="png/icon/512/cognizone-icon-mono-black-512.png" download>PNG 512</a><a href="png/icon/1024/cognizone-icon-mono-black-1024.png" download>PNG 1024</a><a href="pdf/icon/cognizone-icon-mono-black.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage dark"><img src="svg/icon/cognizone-icon-mono-white.svg" alt=""/></div>
+        <div class="meta"><span class="t">Mono white</span><span class="s">MONO-WHITE · ICON</span></div>
+        <div class="dl"><a href="svg/icon/cognizone-icon-mono-white.svg" download>SVG</a><a href="png/icon/512/cognizone-icon-mono-white-512.png" download>PNG 512</a><a href="png/icon/1024/cognizone-icon-mono-white-1024.png" download>PNG 1024</a><a href="pdf/icon/cognizone-icon-mono-white.html" target="_blank">PDF</a></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HORIZONTAL -->
+  <section class="section">
+    <h2 class="sect">Horizontal <em>lockup</em></h2>
+    <p class="sect-sub">Default primary lockup. Use on website headers, email signatures, business cards, and letterheads — anywhere you have width to spare.</p>
+    <div class="grid">
+      <div class="card"><div class="stage light" style="aspect-ratio:3/1"><img src="svg/horizontal/cognizone-horizontal-color-light.svg" alt=""/></div>
+        <div class="meta"><span class="t">Full color · light</span><span class="s">HORIZONTAL · COLOR-LIGHT</span></div>
+        <div class="dl"><a href="svg/horizontal/cognizone-horizontal-color-light.svg" download>SVG</a><a href="png/horizontal/2x/cognizone-horizontal-color-light-2x.png" download>PNG 2x</a><a href="png/horizontal/3x/cognizone-horizontal-color-light-3x.png" download>PNG 3x</a><a href="pdf/horizontal/cognizone-horizontal-color-light.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage dark" style="aspect-ratio:3/1"><img src="svg/horizontal/cognizone-horizontal-color-dark.svg" alt=""/></div>
+        <div class="meta"><span class="t">Full color · dark</span><span class="s">HORIZONTAL · COLOR-DARK</span></div>
+        <div class="dl"><a href="svg/horizontal/cognizone-horizontal-color-dark.svg" download>SVG</a><a href="png/horizontal/2x/cognizone-horizontal-color-dark-2x.png" download>PNG 2x</a><a href="png/horizontal/3x/cognizone-horizontal-color-dark-3x.png" download>PNG 3x</a><a href="pdf/horizontal/cognizone-horizontal-color-dark.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage light" style="aspect-ratio:3/1"><img src="svg/horizontal/cognizone-horizontal-mono-black.svg" alt=""/></div>
+        <div class="meta"><span class="t">Mono black</span><span class="s">HORIZONTAL · MONO-BLACK</span></div>
+        <div class="dl"><a href="svg/horizontal/cognizone-horizontal-mono-black.svg" download>SVG</a><a href="png/horizontal/2x/cognizone-horizontal-mono-black-2x.png" download>PNG 2x</a><a href="png/horizontal/3x/cognizone-horizontal-mono-black-3x.png" download>PNG 3x</a><a href="pdf/horizontal/cognizone-horizontal-mono-black.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage dark" style="aspect-ratio:3/1"><img src="svg/horizontal/cognizone-horizontal-mono-white.svg" alt=""/></div>
+        <div class="meta"><span class="t">Mono white</span><span class="s">HORIZONTAL · MONO-WHITE</span></div>
+        <div class="dl"><a href="svg/horizontal/cognizone-horizontal-mono-white.svg" download>SVG</a><a href="png/horizontal/2x/cognizone-horizontal-mono-white-2x.png" download>PNG 2x</a><a href="png/horizontal/3x/cognizone-horizontal-mono-white-3x.png" download>PNG 3x</a><a href="pdf/horizontal/cognizone-horizontal-mono-white.html" target="_blank">PDF</a></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STACKED -->
+  <section class="section">
+    <h2 class="sect">Stacked / <em>square</em> lockup</h2>
+    <p class="sect-sub">For social cards, Open Graph previews, badges, merchandise, and any nearly-square composition.</p>
+    <div class="grid">
+      <div class="card"><div class="stage light"><img src="svg/stacked/cognizone-stacked-color-light.svg" alt=""/></div>
+        <div class="meta"><span class="t">Full color · light</span><span class="s">STACKED · COLOR-LIGHT</span></div>
+        <div class="dl"><a href="svg/stacked/cognizone-stacked-color-light.svg" download>SVG</a><a href="png/stacked/2x/cognizone-stacked-color-light-2x.png" download>PNG 2x</a><a href="png/stacked/3x/cognizone-stacked-color-light-3x.png" download>PNG 3x</a><a href="pdf/stacked/cognizone-stacked-color-light.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage dark"><img src="svg/stacked/cognizone-stacked-color-dark.svg" alt=""/></div>
+        <div class="meta"><span class="t">Full color · dark</span><span class="s">STACKED · COLOR-DARK</span></div>
+        <div class="dl"><a href="svg/stacked/cognizone-stacked-color-dark.svg" download>SVG</a><a href="png/stacked/2x/cognizone-stacked-color-dark-2x.png" download>PNG 2x</a><a href="png/stacked/3x/cognizone-stacked-color-dark-3x.png" download>PNG 3x</a><a href="pdf/stacked/cognizone-stacked-color-dark.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage light"><img src="svg/stacked/cognizone-stacked-mono-black.svg" alt=""/></div>
+        <div class="meta"><span class="t">Mono black</span><span class="s">STACKED · MONO-BLACK</span></div>
+        <div class="dl"><a href="svg/stacked/cognizone-stacked-mono-black.svg" download>SVG</a><a href="png/stacked/2x/cognizone-stacked-mono-black-2x.png" download>PNG 2x</a><a href="png/stacked/3x/cognizone-stacked-mono-black-3x.png" download>PNG 3x</a><a href="pdf/stacked/cognizone-stacked-mono-black.html" target="_blank">PDF</a></div>
+      </div>
+      <div class="card"><div class="stage dark"><img src="svg/stacked/cognizone-stacked-mono-white.svg" alt=""/></div>
+        <div class="meta"><span class="t">Mono white</span><span class="s">STACKED · MONO-WHITE</span></div>
+        <div class="dl"><a href="svg/stacked/cognizone-stacked-mono-white.svg" download>SVG</a><a href="png/stacked/2x/cognizone-stacked-mono-white-2x.png" download>PNG 2x</a><a href="png/stacked/3x/cognizone-stacked-mono-white-3x.png" download>PNG 3x</a><a href="pdf/stacked/cognizone-stacked-mono-white.html" target="_blank">PDF</a></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- WORDMARK -->
+  <section class="section">
+    <h2 class="sect">Wordmark <em>only</em></h2>
+    <p class="sect-sub">The typographic lockup without the graph mark. Use sparingly — the icon is the stronger identifier in most applications.</p>
+    <div class="grid">
+      <div class="card"><div class="stage light" style="aspect-ratio:4/1"><img src="svg/wordmark/cognizone-wordmark-plum.svg" alt="" style="max-width:80%"/></div>
+        <div class="meta"><span class="t">Plum</span><span class="s">WORDMARK · PLUM</span></div>
+        <div class="dl"><a href="svg/wordmark/cognizone-wordmark-plum.svg" download>SVG</a><a href="png/wordmark/2x/cognizone-wordmark-plum-2x.png" download>PNG 2x</a><a href="png/wordmark/3x/cognizone-wordmark-plum-3x.png" download>PNG 3x</a></div>
+      </div>
+      <div class="card"><div class="stage dark" style="aspect-ratio:4/1"><img src="svg/wordmark/cognizone-wordmark-cream.svg" alt="" style="max-width:80%"/></div>
+        <div class="meta"><span class="t">Cream</span><span class="s">WORDMARK · CREAM</span></div>
+        <div class="dl"><a href="svg/wordmark/cognizone-wordmark-cream.svg" download>SVG</a><a href="png/wordmark/2x/cognizone-wordmark-cream-2x.png" download>PNG 2x</a><a href="png/wordmark/3x/cognizone-wordmark-cream-3x.png" download>PNG 3x</a></div>
+      </div>
+      <div class="card"><div class="stage light" style="aspect-ratio:4/1"><img src="svg/wordmark/cognizone-wordmark-black.svg" alt="" style="max-width:80%"/></div>
+        <div class="meta"><span class="t">Black</span><span class="s">WORDMARK · BLACK</span></div>
+        <div class="dl"><a href="svg/wordmark/cognizone-wordmark-black.svg" download>SVG</a><a href="png/wordmark/2x/cognizone-wordmark-black-2x.png" download>PNG 2x</a><a href="png/wordmark/3x/cognizone-wordmark-black-3x.png" download>PNG 3x</a></div>
+      </div>
+      <div class="card"><div class="stage dark" style="aspect-ratio:4/1"><img src="svg/wordmark/cognizone-wordmark-white.svg" alt="" style="max-width:80%"/></div>
+        <div class="meta"><span class="t">White</span><span class="s">WORDMARK · WHITE</span></div>
+        <div class="dl"><a href="svg/wordmark/cognizone-wordmark-white.svg" download>SVG</a><a href="png/wordmark/2x/cognizone-wordmark-white-2x.png" download>PNG 2x</a><a href="png/wordmark/3x/cognizone-wordmark-white-3x.png" download>PNG 3x</a></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAVICON -->
+  <section class="section">
+    <h2 class="sect">Favicon <em>bundle</em></h2>
+    <p class="sect-sub">Drop the entire <code>favicon/</code> folder at your web root. Then in your <code>&lt;head&gt;</code>:</p>
+    <pre style="background:#1C1438;color:var(--cream);padding:20px 24px;border-radius:12px;overflow:auto;font-family:'Roboto Mono',monospace;font-size:12px;line-height:1.6">&lt;link rel="icon" href="/favicon.svg" type="image/svg+xml"&gt;
+&lt;link rel="icon" href="/favicon-32x32.png" sizes="32x32"&gt;
+&lt;link rel="icon" href="/favicon-16x16.png" sizes="16x16"&gt;
+&lt;link rel="apple-touch-icon" href="/apple-touch-icon.png"&gt;
+&lt;link rel="manifest" href="/site.webmanifest"&gt;</pre>
+    <div class="top-actions">
+      <a class="btn ghost" href="favicon/favicon.svg" download>favicon.svg</a>
+      <a class="btn ghost" href="favicon/apple-touch-icon.png" download>apple-touch-icon.png</a>
+      <a class="btn ghost" href="favicon/android-chrome-512.png" download>android-chrome-512.png</a>
+    </div>
+  </section>
+
+  <!-- COLORS -->
+  <section class="section">
+    <h2 class="sect">Brand <em>colors</em></h2>
+    <p class="sect-sub">Plum as primary ink; cream as ground; pink as primary accent. The six coloured nodes form a supporting palette.</p>
+    <div class="swatches">
+      <div class="sw"><div class="block" style="background:#2F2450;color:#fff"><span>INK</span><span>01</span></div><div class="info"><span class="name">Plum</span><span class="hex">#2F2450</span></div></div>
+      <div class="sw"><div class="block" style="background:#FBF6F1;color:#2F2450;border-bottom:1px solid var(--rule)"><span>GROUND</span><span>02</span></div><div class="info"><span class="name">Cream</span><span class="hex">#FBF6F1</span></div></div>
+      <div class="sw"><div class="block" style="background:#E17B9E;color:#fff"><span>ACCENT</span><span>03</span></div><div class="info"><span class="name">Pink</span><span class="hex">#E17B9E</span></div></div>
+      <div class="sw"><div class="block" style="background:#C85A8A;color:#fff"><span>NODE</span><span>04</span></div><div class="info"><span class="name">Pink deep</span><span class="hex">#C85A8A</span></div></div>
+      <div class="sw"><div class="block" style="background:#49C6D4;color:#2F2450"><span>NODE</span><span>05</span></div><div class="info"><span class="name">Teal</span><span class="hex">#49C6D4</span></div></div>
+      <div class="sw"><div class="block" style="background:#5BB8E2;color:#fff"><span>NODE</span><span>06</span></div><div class="info"><span class="name">Cyan</span><span class="hex">#5BB8E2</span></div></div>
+      <div class="sw"><div class="block" style="background:#3D6BB8;color:#fff"><span>NODE</span><span>07</span></div><div class="info"><span class="name">Blue</span><span class="hex">#3D6BB8</span></div></div>
+      <div class="sw"><div class="block" style="background:#3450A0;color:#fff"><span>NODE</span><span>08</span></div><div class="info"><span class="name">Blue deep</span><span class="hex">#3450A0</span></div></div>
+      <div class="sw"><div class="block" style="background:#9B5DB8;color:#fff"><span>NODE</span><span>09</span></div><div class="info"><span class="name">Purple</span><span class="hex">#9B5DB8</span></div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>© 2026 Cognizone · Brussels</span>
+    <span>Logo pack v1.0 · Apr 2026</span>
+  </footer>
+</div>
+
+</body>
+</html>

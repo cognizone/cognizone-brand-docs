@@ -1,0 +1,97 @@
+# Cognizone 2026 brand — document style spec
+
+Source of truth for the `--brand 2026` renderers (`bin/render-*-2026.js`, `templates/2026/`).
+Values were measured from the 2026 reference document
+([`brand-2026-reference.docx`](brand-2026-reference.docx)) and the logo pack
+([`../assets/brand-2026/README.md`](../assets/brand-2026/README.md)). Where Markdown has an element the
+reference document does not show, the mapping below says what was chosen.
+
+Units: pt unless stated. Word twips = pt × 20; Word half-points = pt × 2.
+
+## Colours
+
+| Token | Hex | Use |
+|---|---|---|
+| Plum | `#2F2450` | Headings, titles, table header fill, header wordmark, page number |
+| Ink | `#2B2340` | Body text |
+| Plum soft | `#4A3A78` | Cover summary, blockquote text, H4 |
+| Pink deep | `#C85A8A` | Eyebrows (mono labels), section numbers, bullets, subtitle, blockquote bar, inline code |
+| Pink | `#E17B9E` | H3 bottom rule |
+| Muted | `#6B6185` | Header text, footer text, cover address, captions, TOC page numbers |
+| Blue | `#3D6BB8` | Links (no underline) |
+| Sand | `#F3EBDE` | Blockquote fill, inline-code fill, cover metadata label column |
+| Cream | `#FBF6F1` | Zebra table rows, code block fill |
+| Rule | `#E2D8CB` | Table rules, TOC rules, header rule, horizontal rules, code block border |
+| White | `#FFFFFF` | Table header text, odd table rows, page background |
+
+## Fonts
+
+| Role | Font | Files |
+|---|---|---|
+| Titles, H2 | Calistoga (single weight) | `templates/fonts/Calistoga-Regular.ttf` |
+| Body, H3, H4, tables | Roboto | `templates/fonts/Roboto[wdth,wght].ttf` (+ italic) |
+| Eyebrows, labels, numbers, code, header/footer | Roboto Mono | `templates/fonts/RobotoMono[wght].ttf` (+ italic) |
+
+Word references fonts by name (no embedding): Calistoga, Roboto and Roboto Mono must be installed where the `.docx` is opened.
+
+## Page
+
+A4. Margins 20 mm on all sides (PDF: top 25 mm to make room for the header, as classic). Header/footer distance 12.5 mm.
+
+## Cover page (no header or footer)
+
+Top to bottom:
+
+1. **Logo lockup** — icon `templates/2026/icon.png` at 17 mm square, followed by two spaces and "Cognizone" in Roboto bold 20 pt plum, on one line. Space before 20, after 80.
+2. **Eyebrow** — Roboto Mono 9 pt pink deep, letter-spacing 3 pt, upper case: `COGNIZONE / {type}`; `COGNIZONE / {id}` when there is no type; `COGNIZONE` when neither. Space after 12.
+3. **Title** — Calistoga 32 pt plum, line height 1.1.
+4. **Subtitle** (frontmatter `subtitle`, optional) — Calistoga 32 pt pink deep, directly under the title. Space after the title block 20.
+5. **Summary** (frontmatter `summary`, optional) — Roboto 12 pt plum soft, line height 1.33. Space after 30.
+6. **Metadata table** — rows for the fields that are present, in this order: ID, Type, Status, Version, Date, Author, Client, Project (the title is not repeated). Width 60 % of the text block. Label cell: sand fill, Roboto Mono 7.5 pt muted, upper case, letter-spacing 1 pt. Value cell: Roboto 9.5 pt ink. Horizontal rules only, 0.5 pt rule colour.
+7. **Bottom of the page** (anchored to the page bottom):
+   - Address line — Roboto 8.5 pt muted: `Cognizone BV · Avenue Arnaud Fraiteur 15-23, 1050 Ixelles, Belgium · BE 0634.615.174`. Space after 3.
+   - Date line — Roboto Mono 8 pt muted: `{date} · {classification}`, only the parts present, joined by ` · `. Omitted when both are empty.
+
+## Header and footer (every page after the cover)
+
+- **Header** — left: icon 4.2 mm square + " Cognizone" in Roboto bold 8.5 pt plum. Right-aligned: `{id} - {title}` (the existing `headerTitle`) in Roboto Mono 7 pt muted. Bottom border 0.5 pt rule colour, 6 pt below the text.
+- **Footer** — left: Roboto Mono 7 pt muted: `{classification} · {client} · {project}`, only the parts present. Right-aligned: page number, Roboto Mono 7 pt plum. No border.
+
+## Contents page (starts on a new page)
+
+- Label `CONTENTS` — Roboto Mono bold 8.5 pt pink deep, letter-spacing 3 pt. Space after 10.
+- **H2 entries** — section number zero-padded to two digits (`01`) in Roboto Mono bold 8 pt pink deep; tab stop at 19.4 mm; heading text Roboto 10.5 pt plum; page number right-aligned in Roboto Mono 8 pt muted. Bottom border 0.25 pt rule colour, 3 pt below the text. Space after 7.
+- **H3 entries** — indented to the 19.4 mm text column; number (`1.1`) in Roboto Mono 7.5 pt muted, text Roboto 9.5 pt ink, page number as above; no border. Space after 3.
+- Same heading depth as the classic TOC.
+- DOCX keeps the native Word TOC field (updates on open), with its TOC 1 / TOC 2 styles set to match the above as closely as Word allows.
+
+## Body
+
+| Element | Style |
+|---|---|
+| Body text | Roboto 9.5 pt ink, line height 1.2, space after 6 |
+| **H2** (section `1`) | Eyebrow line: number zero-padded (`01`) in Roboto Mono bold 8.5 pt pink deep, letter-spacing 3 pt, space after 2. Then the heading text in Calistoga 20 pt plum, space after 12. Space before the eyebrow 24. No page break. Keep with next. |
+| **H3** (section `1.1`) | Number in Roboto Mono 10 pt pink deep, a space, then text in Roboto bold 12 pt plum. Bottom border 0.75 pt pink, 3 pt below the text. Space before 14, after 6. Keep with next. |
+| **H4** (section `1.1.1`) | Number in Roboto Mono 9 pt pink deep, a space, then text in Roboto bold 10.5 pt plum soft. Space before 10, after 4. Keep with next. |
+| Bold / italic | Same colour as the surrounding text |
+| Links | Blue, no underline |
+| Bullet lists | Level 1 `•`, level 2 `◦`, level 3 `–`, bullet in pink deep. Indent 6.35 mm per level, hanging 4.2 mm. Space after 4, line height 1.2 |
+| Ordered lists | `1.` / `a.` / `i.` by level, number in pink deep; indents as bullets |
+| Tables | Full width. Header row: plum fill, Roboto bold 8.5 pt white, repeats on each page. Body: Roboto 8.5 pt ink, zebra white / cream starting with white. Horizontal rules only, 0.5 pt rule colour; no vertical borders. Cell padding 3 pt top/bottom, 4.5 pt left/right. Line height 1.05. Column alignment from the Markdown delimiter row is honoured. |
+| Blockquote | Left bar 3 pt pink deep, sand fill, text 8 pt from the bar, indent 3 mm. Text Roboto italic 9.5 pt plum soft. All child blocks (paragraphs, lists) carry the style. |
+| Code block | Roboto Mono 8 pt plum on cream, 0.5 pt rule-colour border with a 3 pt plum left border, padding 6 pt |
+| Inline code | Roboto Mono 8.5 pt pink deep on sand |
+| Horizontal rule | 0.5 pt rule colour, space 10 above and below |
+| Images | As classic: max width 100 % (PDF/HTML), max 500 px wide (DOCX) |
+| Mermaid | As classic (`theme: 'neutral'`, fence options `maxWidth` / `align`) |
+
+## Frontmatter fields added for this brand
+
+All optional; the classic brand ignores them.
+
+| Field | Use |
+|---|---|
+| `subtitle` | Pink second title line on the cover |
+| `summary` | Paragraph under the title on the cover |
+| `classification` | e.g. `Confidential` — cover date line and footer |
+| `brand` | `2026` selects this brand when `--brand` is not given |
