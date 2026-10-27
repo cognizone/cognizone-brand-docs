@@ -69,7 +69,7 @@ Inline code with brackets: `<html>` & `a < b`.
 ### Table With Inline Formatting
 
 | Feature | Status | Notes |
-|---------|--------|-------|
+|---------|:------:|-------|
 | **Bold header** | `done` | Uses *italic* note |
 | Links | done | See [cogni.zone](https://cogni.zone) |
 | Mixed | pending | Has **bold**, *italic*, and `code` |

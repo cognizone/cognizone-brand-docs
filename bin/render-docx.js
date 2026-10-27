@@ -405,12 +405,14 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       }
 
       case 'table': {
-        const headerCells = token.header.map(cell =>
+        // Column alignment from the delimiter row (:---:, ---:); null = left
+        const headerCells = token.header.map((cell, colIdx) =>
           new TableCell({
             shading: { fill: GREEN, type: ShadingType.CLEAR },
             borders: cellBorders(),
             children: [new Paragraph({
               children: inlineToRuns(cell.tokens, { bold: true, color: WHITE, size: 19 }),
+              alignment: DOCX_ALIGN[token.align[colIdx]],
               spacing: { before: 40, after: 40 },
             })],
           })
@@ -418,12 +420,13 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
 
         const bodyRows = token.rows.map((row, rowIdx) =>
           new TableRow({
-            children: row.map(cell =>
+            children: row.map((cell, colIdx) =>
               new TableCell({
                 shading: { fill: rowIdx % 2 === 0 ? WHITE : LIGHT_GREEN, type: ShadingType.CLEAR },
                 borders: cellBorders(),
                 children: [new Paragraph({
                   children: inlineToRuns(cell.tokens),
+                  alignment: DOCX_ALIGN[token.align[colIdx]],
                   spacing: { before: 40, after: 40 },
                 })],
               })

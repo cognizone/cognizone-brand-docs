@@ -210,6 +210,10 @@ thead th {
   text-align: left;
 }
 
+/* Honour column alignment from the markdown delimiter row (:---:, ---:) */
+thead th[align="center"] { text-align: center; }
+thead th[align="right"] { text-align: right; }
+
 tbody tr:nth-child(even) {
   background-color: var(--light-green-bg);
 }

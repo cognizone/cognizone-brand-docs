@@ -145,6 +145,10 @@ try {
   assert('docx: code-block angle brackets preserved',
     docXml.includes('&lt;http://data.europa.eu/s66#&gt;'),
     'IRI in code block was dropped or unescaped');
+  // Regression: :---: column alignment reaches the cell paragraphs
+  const pendingPara = docXml.split('</w:p>').find(p => p.includes('>pending<')) || '';
+  assert('docx: centred table column is centred',
+    pendingPara.includes('<w:jc w:val="center"/>'), 'cell paragraph has no center justification');
 } catch (e) {
   assert('docx: generation succeeds', false, e.stderr?.toString() || e.message);
 }
