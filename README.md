@@ -72,6 +72,8 @@ cognizone-convert docs/ merged-output.pdf            # custom output path
 
 All output uses the 2026 Cognizone brand; no flag is needed.
 
+A Word file opens with `–` in place of the contents page numbers. To fill them in, choose **References → Update Table → Update page numbers only** in Word. Don't pick "Update entire table": it replaces the 2026 styling with Word's default look.
+
 ### Using it from Claude Code
 
 Claude Code picks the tool up from the shell like any other command. To make it the default for client-facing documents, add a short section to your `~/.claude/CLAUDE.md`:
