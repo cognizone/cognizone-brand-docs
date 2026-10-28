@@ -234,15 +234,19 @@ function inlineToRuns(tokens, ctx = {}) {
           shading: { type: ShadingType.CLEAR, fill: SAND },
         }));
         break;
-      case 'link':
+      case 'link': {
         // Links: blue, no underline
-        runs.push(new ExternalHyperlink({
-          link: t.href,
-          children: t.tokens
-            ? inlineToRuns(t.tokens, { ...ctx, color: BLUE })
-            : [new TextRun({ text: t.text, ...runProps({ ...ctx, color: BLUE }) })],
-        }));
+        const children = t.tokens
+          ? inlineToRuns(t.tokens, { ...ctx, color: BLUE })
+          : [new TextRun({ text: t.text, ...runProps({ ...ctx, color: BLUE }) })];
+        // "#heading-id" jumps to that heading's bookmark: as an external link Word
+        // opens the bare "#id" and lands at the top of the document
+        const n = t.href.startsWith('#') && _tocBookmarks.get(t.href.slice(1));
+        runs.push(n
+          ? new InternalHyperlink({ anchor: tocBookmarkName(n), children })
+          : new ExternalHyperlink({ link: t.href, children }));
         break;
+      }
       case 'image': {
         const imgPath = t.href.startsWith('http') ? null : path.resolve(_inputDir, t.href);
         if (imgPath && fs.existsSync(imgPath)) {

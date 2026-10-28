@@ -546,6 +546,22 @@ try {
   assert('2026 html: content checks', false, e.message);
 }
 
+// Word: a link to "#heading-id" jumps to that heading, not to an external "#id"
+try {
+  const linkMd = path.join(OUT_DIR, 'anchor-link.md');
+  fs.writeFileSync(linkMd, '---\ntitle: Anchor link\n---\n\n## One\n\nSee [Two](#two).\n\n## Two\n\nText.\n');
+  const out = path.join(OUT_DIR, 'anchor-link.docx');
+  execFileSync(process.execPath, [CONVERT, linkMd, out, '--format', 'docx'], { stdio: 'pipe' });
+  const xml = execFileSync('unzip', ['-p', out, 'word/document.xml']).toString();
+  const rels = execFileSync('unzip', ['-p', out, 'word/_rels/document.xml.rels']).toString();
+  const target = (xml.match(/<w:bookmarkStart w:name="(_toc_\d+)"[^>]*\/>(?:(?!<\/w:p>).)*>Two</) || [])[1];
+  assert('2026 docx: in-document link jumps to its heading bookmark',
+    target && (xml.split('</w:p>').find(p => p.includes('>See <')) || '').includes(`w:anchor="${target}"`)
+    && !rels.includes('Target="#two"'), target);
+} catch (e) {
+  assert('2026 docx: in-document link jumps to its heading bookmark', false, e.stderr?.toString() || e.message);
+}
+
 // No flag and no frontmatter → 2026 (the default); `brand: classic` in frontmatter opts out
 for (const [label, fm, want2026] of [['default is 2026', '', true], ['frontmatter brand selects classic', 'brand: classic\n', false]]) {
   try {
