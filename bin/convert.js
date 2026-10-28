@@ -26,7 +26,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!inputArg) {
-  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand classic|2026]');
+  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand 2026|classic]');
   process.exit(1);
 }
 
@@ -43,9 +43,9 @@ if (brandArg && !BRANDS.includes(brandArg)) {
   process.exit(1);
 }
 
-// --brand wins; otherwise the (first) document's `brand:` frontmatter; default classic
+// --brand wins; otherwise the (first) document's `brand:` frontmatter; default 2026
 function pickBrand(parsed) {
-  const brand = brandArg || String(parsed.brand || 'classic').toLowerCase();
+  const brand = brandArg || String(parsed.brand || '2026').toLowerCase();
   if (!BRANDS.includes(brand)) {
     console.error(`Unknown brand in frontmatter: ${brand}. Supported: ${BRANDS.join(', ')}`);
     process.exit(1);

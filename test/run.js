@@ -136,7 +136,7 @@ assert('parse: H3 numbering is nested', h3s[0]?.number.includes('.'));
 // ── Test DOCX generation ─────────────────────────────────────────────────────
 const docxOut = path.join(OUT_DIR, 'fixture.docx');
 try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, docxOut, '--format', 'docx'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, FIXTURE, docxOut, '--format', 'docx', '--brand', 'classic'], { stdio: 'pipe' });
   assert('docx: file created', fs.existsSync(docxOut));
   const docxSize = fs.statSync(docxOut).size;
   assert('docx: file is non-trivial (>10KB)', docxSize > 10000, `size: ${docxSize}`);
@@ -187,7 +187,7 @@ try {
 // ── Test PDF generation ──────────────────────────────────────────────────────
 const pdfOut = path.join(OUT_DIR, 'fixture.pdf');
 try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, pdfOut, '--format', 'pdf'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, FIXTURE, pdfOut, '--format', 'pdf', '--brand', 'classic'], { stdio: 'pipe' });
   assert('pdf: file created', fs.existsSync(pdfOut));
   const pdfSize = fs.statSync(pdfOut).size;
   assert('pdf: file is non-trivial (>10KB)', pdfSize > 10000, `size: ${pdfSize}`);
@@ -221,7 +221,7 @@ fs.writeFileSync(multiListMd, [
 
 const multiListOut = path.join(OUT_DIR, 'multi-list.docx');
 try {
-  execFileSync(process.execPath, [CONVERT, multiListMd, multiListOut, '--format', 'docx'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, multiListMd, multiListOut, '--format', 'docx', '--brand', 'classic'], { stdio: 'pipe' });
   // DOCX is a ZIP — extract word/numbering.xml and verify each ordered list
   // gets its own abstractNumId (not just different numId — Word ignores
   // startOverride when multiple w:num share the same abstractNumId)
@@ -245,7 +245,7 @@ const minimalMd = path.join(OUT_DIR, 'minimal.md');
 fs.writeFileSync(minimalMd, '## Just a heading\n\nSome text.\n');
 const minimalOut = path.join(OUT_DIR, 'minimal.docx');
 try {
-  execFileSync(process.execPath, [CONVERT, minimalMd, minimalOut, '--format', 'docx'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, minimalMd, minimalOut, '--format', 'docx', '--brand', 'classic'], { stdio: 'pipe' });
   assert('edge: no frontmatter produces valid docx', fs.existsSync(minimalOut));
 } catch (e) {
   assert('edge: no frontmatter produces valid docx', false, e.stderr?.toString() || e.message);
@@ -254,7 +254,7 @@ try {
 // ── Test HTML generation ─────────────────────────────────────────────────────
 const htmlOut = path.join(OUT_DIR, 'fixture.html');
 try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, htmlOut, '--format', 'html'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, FIXTURE, htmlOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
   assert('html: file created', fs.existsSync(htmlOut));
   const html = fs.readFileSync(htmlOut, 'utf8');
   assert('html: file is non-trivial (>10KB)', html.length > 10000, `size: ${html.length}`);
@@ -300,7 +300,7 @@ fs.writeFileSync(path.join(mergeDir, 'b-second.md'),
 
 const mergedHtmlOut = path.join(OUT_DIR, 'merged.html');
 try {
-  execFileSync(process.execPath, [CONVERT, mergeDir, mergedHtmlOut, '--format', 'html'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, mergeDir, mergedHtmlOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
   assert('html merge: file created', fs.existsSync(mergedHtmlOut));
   const html = fs.readFileSync(mergedHtmlOut, 'utf8');
   assert('html merge: master cover table lists docs',
@@ -351,7 +351,7 @@ fs.writeFileSync(noMermaidMd, [
 ].join('\n'));
 const noMermaidOut = path.join(OUT_DIR, 'no-mermaid.html');
 try {
-  execFileSync(process.execPath, [CONVERT, noMermaidMd, noMermaidOut, '--format', 'html'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, noMermaidMd, noMermaidOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
   const html = fs.readFileSync(noMermaidOut, 'utf8');
   assert('html: no-mermaid doc omits the mermaid bundle',
     !html.includes('mermaid.initialize'),
@@ -390,7 +390,7 @@ fs.writeFileSync(mermaidExampleMd, [
 ].join('\n'));
 const mermaidExampleOut = path.join(OUT_DIR, 'mermaid-example.html');
 try {
-  execFileSync(process.execPath, [CONVERT, mermaidExampleMd, mermaidExampleOut, '--format', 'html'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, mermaidExampleMd, mermaidExampleOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
   const html = fs.readFileSync(mermaidExampleOut, 'utf8');
   assert('html: mermaid inside a code example does not inline the bundle',
     !html.includes('mermaid.initialize'),
@@ -419,7 +419,7 @@ fs.writeFileSync(leakMd, [
 ].join('\n'));
 const leakOut = path.join(OUT_DIR, 'leak.html');
 try {
-  execFileSync(process.execPath, [CONVERT, leakMd, leakOut, '--format', 'html'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, leakMd, leakOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
   const html = fs.readFileSync(leakOut, 'utf8');
   const b64Secret = fs.readFileSync(secretTxt).toString('base64');
   assert('html: non-image file content not embedded raw', !html.includes(secretMarker));
@@ -432,7 +432,7 @@ try {
 // ── Test default folder output naming (html) ─────────────────────────────────
 // Folder input with no explicit output → <folder-basename>.html in the CWD.
 try {
-  execFileSync(process.execPath, [CONVERT, mergeDir, '--format', 'html'], { cwd: OUT_DIR, stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, mergeDir, '--format', 'html', '--brand', 'classic'], { cwd: OUT_DIR, stdio: 'pipe' });
   const expected = path.join(OUT_DIR, `${path.basename(mergeDir)}.html`);
   assert('html merge: default output is <folder>.html in CWD',
     fs.existsSync(expected),
@@ -460,7 +460,7 @@ fs.writeFileSync(hostileMd, [
 
 const hostileOut = path.join(OUT_DIR, 'hostile.html');
 try {
-  execFileSync(process.execPath, [CONVERT, hostileMd, hostileOut, '--format', 'html'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, hostileMd, hostileOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
   const html = fs.readFileSync(hostileOut, 'utf8');
   assert('html escaping: image href cannot break out of src attribute',
     !/<img[^>]*src="[^"]*"onerror/.test(html) && !html.includes('src="x.png"onerror'));
@@ -493,8 +493,11 @@ try {
 // ── 2026 brand (--brand 2026) ────────────────────────────────────────────────
 // ponytail: delete the classic-vs-2026 split here when the classic brand goes
 const brand2026Md = path.join(OUT_DIR, 'brand-2026.md');
-fs.writeFileSync(brand2026Md, fs.readFileSync(FIXTURE, 'utf8').replace(
-  /^---\n/, '---\nsubtitle: "Second title line"\nsummary: "Cover summary paragraph."\nclassification: Confidential\n'));
+// Also the README sample outputs (test/output/brand-2026.{pdf,docx}); image paths
+// are rewritten because the copy lives one folder below the fixture
+fs.writeFileSync(brand2026Md, fs.readFileSync(FIXTURE, 'utf8')
+  .replace(/^---\n/, '---\nsubtitle: "Second title line"\nsummary: "Cover summary paragraph."\nclassification: Confidential\n')
+  .replace(/sample-image\.png/g, '../sample-image.png'));
 
 for (const format of ['pdf', 'docx', 'html']) {
   const out = path.join(OUT_DIR, `brand-2026.${format}`);
@@ -533,16 +536,18 @@ try {
   assert('2026 html: content checks', false, e.message);
 }
 
-// `brand: 2026` in frontmatter selects the brand without the flag
-try {
-  const fmMd = path.join(OUT_DIR, 'brand-fm.md');
-  fs.writeFileSync(fmMd, '---\ntitle: FM brand\nbrand: 2026\n---\n\n## One\n\nText.\n');
-  const out = path.join(OUT_DIR, 'brand-fm.docx');
-  execFileSync(process.execPath, [CONVERT, fmMd, out, '--format', 'docx'], { stdio: 'pipe' });
-  const xml = execFileSync('unzip', ['-p', out, 'word/document.xml']).toString();
-  assert('2026: frontmatter brand selects 2026', xml.includes('Calistoga'));
-} catch (e) {
-  assert('2026: frontmatter brand selects 2026', false, e.stderr?.toString() || e.message);
+// No flag and no frontmatter → 2026 (the default); `brand: classic` in frontmatter opts out
+for (const [label, fm, want2026] of [['default is 2026', '', true], ['frontmatter brand selects classic', 'brand: classic\n', false]]) {
+  try {
+    const fmMd = path.join(OUT_DIR, 'brand-fm.md');
+    fs.writeFileSync(fmMd, `---\ntitle: FM brand\n${fm}---\n\n## One\n\nText.\n`);
+    const out = path.join(OUT_DIR, 'brand-fm.docx');
+    execFileSync(process.execPath, [CONVERT, fmMd, out, '--format', 'docx'], { stdio: 'pipe' });
+    const xml = execFileSync('unzip', ['-p', out, 'word/document.xml']).toString();
+    assert(`brand: ${label}`, xml.includes('Calistoga') === want2026);
+  } catch (e) {
+    assert(`brand: ${label}`, false, e.stderr?.toString() || e.message);
+  }
 }
 
 try {

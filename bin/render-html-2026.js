@@ -524,6 +524,11 @@ body {
   margin-top: 3pt;
 }
 
+/* Same gap before the next chapter as after a chapter's rule */
+#TOC > ul > li > ul {
+  margin-bottom: 11pt;
+}
+
 #TOC ul ul li {
   margin-bottom: 3pt;
 }

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working in this repository.
 
 ## Repository Purpose
 
-This is the **Cognizone branded document conversion** package (`@cognizone/brand-docs`). It converts Markdown files to branded output formats (PDF, Word, HTML) using Cognizone brand styles — colors, fonts, and layout.
+This is the **Cognizone branded document conversion** package (`@cognizone/brand-docs`). It converts Markdown files to branded output formats (PDF, Word, HTML) using Cognizone brand styles — colors, fonts, and layout. The **2026 brand** is the default; the old `classic` brand stays available with `-b classic` until it is deleted.
 
 Published to GitHub Packages. Installed via Git URL: `npm install -g cognizone/cognizone-brand-docs`. CLI command: `cognizone-convert`.
 
@@ -14,26 +14,45 @@ Supports single-file conversion (PDF, DOCX, or HTML) and folder merge (all `.md`
 
 ```
 bin/
-  cognizone-convert.js    # CLI entry point — parses args, calls convert.js
+  cognizone-convert.js    # CLI entry point — help/version, downloads Chrome on first use, calls convert.js
   convert.js              # Thin orchestrator — parse + route to renderer
   parse.js                # Shared parsing: frontmatter, lexing, section numbers, TOC
   render-pdf.js           # PDF renderer (HTML assembly + Puppeteer)
   render-docx.js          # DOCX renderer (token tree → docx Document)
   render-html.js          # HTML renderer (self-contained single file, no Puppeteer)
+  render-*-2026.js        # 2026 brand (default) copies of the three renderers (see "Brands")
+  mermaid-opts.js         # Parses mermaid fence options (maxWidth, align)
 templates/
   styles.css              # Cognizone brand CSS for PDF output
   pdf-print.js            # Puppeteer script — renders HTML to PDF with headers/footers
   logo.png                # Cognizone logo (used in headers)
-  fonts/                  # Roboto + Roboto Mono variable fonts (TTF)
+  2026/                   # 2026 brand: styles.css, pdf-print.js, icon.png
+  fonts/                  # Roboto + Roboto Mono variable fonts, Calistoga (2026 titles), TTF
+reference/                # 2026 style spec + content-free reference .docx (private/ is git-ignored)
+assets/brand-2026/        # 2026 logo pack as delivered (not in the npm package)
+test/
+  run.js                  # Test runner (`npm test`) — converts fixture.md in every format/brand and asserts on the output
+  fixture.md              # Test document exercising every element
+  output/                 # brand-2026.{pdf,docx}: README samples; fixture.{pdf,docx}: classic samples (tracked)
 package.json              # npm package config
 ```
+
+## Testing
+
+`npm test` runs `test/run.js` (no framework). It regenerates the tracked samples in `test/output/` as a side effect — only commit those when the sample outputs should change (the README screenshots in `docs/screenshots/` are cropped from `test/output/brand-2026.pdf` with `pdftoppm -r 150`). Classic-brand tests pass `--brand classic` explicitly. Add a regression test there for every rendering bug fixed. The tests shell out to `unzip` and write to `/dev/null`, so they run on macOS/Linux (or WSL), not plain Windows.
+
+## Cross-platform
+
+The tool itself must work on macOS, Windows and Linux: no shell scripts, spawn Node with `process.execPath` (not `'node'`), build paths with `path`, and keep install steps to plain `npm`. Recent npm versions skip install scripts by default, so puppeteer's postinstall may never fetch Chrome; `ensureChrome()` in `bin/cognizone-convert.js` runs puppeteer's own `install.mjs` on first use instead (skipped for HTML output).
 
 ## Conversion Pipeline
 
 `bin/convert.js` orchestrates the conversion (pure Node.js, no bash or pandoc):
 
 1. **Parse** (`parse.js`) — `gray-matter` extracts frontmatter; `marked.lexer()` produces token tree; walks tokens to compute section numbers + TOC entries
-2. **Route** — based on `--format` flag, delegates to `render-pdf.js`, `render-docx.js`, or `render-html.js`
+2. **Route** — based on `--format` flag, delegates to `render-pdf.js`, `render-docx.js`, or `render-html.js` (or their `-2026` copies when the brand is `2026`: `--brand` flag first, then frontmatter `brand`, default `2026`)
+
+The path sections below name the classic files; the `-2026` copies follow the same structure, with the differences listed under "Brands".
 
 ### Folder merge path (PDF and HTML)
 
@@ -95,15 +114,18 @@ HTML brand CSS lives in `render-html.js` (`STYLES` constant), mirroring `templat
 - **`heading(innerHtml)`** — receives already-rendered inner HTML (post-processor). To correlate with token data, use `walkTokens` to collect heading metadata in order, then match by index in the renderer override.
 - **`code(text, lang, escaped)`** — receives raw code text, language string, and escaped flag as separate arguments. Return HTML string directly.
 
-## 2026 brand (parallel, temporary)
+## Brands: 2026 (default) and classic (frozen)
 
-`--brand 2026` (or frontmatter `brand: 2026`) routes to full copies of the renderers: `bin/render-pdf-2026.js`, `bin/render-docx-2026.js`, `bin/render-html-2026.js`, `templates/2026/` (styles.css, pdf-print.js, icon.png). Routing lives in `bin/convert.js` (`renderer()`). Default is `classic`.
+The 2026 brand is the default and lives in full copies of the renderers: `bin/render-pdf-2026.js`, `bin/render-docx-2026.js`, `bin/render-html-2026.js`, `templates/2026/` (styles.css, pdf-print.js, icon.png). `--brand classic` (or frontmatter `brand: classic`) routes to the original renderers instead. Routing lives in `bin/convert.js` (`renderer()`).
 
 - The classic brand is **frozen** and will be deleted in late 2026 / early 2027: fix bugs in the 2026 files only. Removal = delete the classic renderers/templates, rename the `-2026` files, drop the `--brand` switch and its tests.
 - Styling source of truth: `reference/brand-2026-spec.md` (measured from `reference/brand-2026-reference.docx`, a content-free copy of a real 2026 document). `reference/private/` is git-ignored and holds the confidential original — never commit or quote it.
 - Logo pack as delivered: `assets/brand-2026/` (not shipped in the npm package; the renderers use `templates/2026/icon.png`).
-- Extra frontmatter fields (ignored by classic): `subtitle`, `summary`, `classification`.
 - PDF header/footer are drawn with CSS `@page` margin boxes (not Puppeteer templates) so the cover can have none; needs Chrome ≥ 131 (bundled with puppeteer 24).
+- H2 headings carry a `CHAPTER 01` label above the title (`displayNumber()` in the PDF/HTML renderers, a separate label paragraph in DOCX); merged master-TOC entries show `DOCUMENT 01`.
+- DOCX contents page is **static**, not a native TOC field (Word's TOC copies the heading's direct run formatting into the entries). Each entry is built from `parsed.tocEntries`; page numbers are `PAGEREF` fields to `_toc_n` bookmarks on the headings, filled in when Word updates fields on open (`updateFields: true` — the user must click Yes on Word's prompt).
+- DOCX blockquotes are a single-cell table (pink left border, sand fill), so the whole quote is one box whatever it contains.
+- Word paragraph-border quirks to keep in mind: space-after is drawn *inside* the border box (put gaps in space-before instead), and adjacent paragraphs with identical borders and indents are merged into one box (alternate the indent by 1 twip to keep them apart).
 
 ## Document Frontmatter
 
@@ -123,23 +145,23 @@ project: REG+
 ---
 ```
 
-All fields are optional. How each field is used:
+All fields are optional, plus `subtitle`, `summary`, `classification` (ignored by classic) and `brand` (`2026` or `classic`). How each field is used in the 2026 brand (full spec: `reference/brand-2026-spec.md`):
 
-| Field | Cover table | Header | Footer |
+| Field | Cover | Header | Footer |
 |---|---|---|---|
-| `title` | Title (22pt bold) | `{id} - {title}` | — |
-| `id` | Green eyebrow above title + table row | `{id} - {title}` | — |
-| `type` | Table row | — | — |
-| `status` | Table row | — | — |
-| `version` | Table row | — | — |
-| `date` | Table row | — | — |
-| `author` | Table row | — | — |
-| `client` | Table row | — | `{client} · {project}` |
-| `project` | Table row | — | `{client} · {project}` |
+| `title` | Title (Calistoga 32pt plum) | `{id} - {title}` | — |
+| `subtitle` | Second title line (pink) | — | — |
+| `summary` | Paragraph under the title | — | — |
+| `type` | Eyebrow `COGNIZONE / {type}` + table row | — | — |
+| `id` | Eyebrow when there is no type + table row | `{id} - {title}` | — |
+| `status`, `version`, `author` | Table row | — | — |
+| `date` | Table row + bottom line `{date} · {classification}` | — | — |
+| `classification` | Bottom line | — | `{classification} · {client} · {project}` |
+| `client`, `project` | Table row | — | `{classification} · {client} · {project}` |
 
-## Rendering Rules
+## Classic brand rendering rules (frozen)
 
-All formats apply the same brand rules. Defined in `templates/styles.css` (PDF), `bin/render-docx.js` (DOCX), and `bin/render-html.js` (HTML).
+The 2026 brand's rules are in `reference/brand-2026-spec.md`. The rules below describe the **classic** brand (`-b classic`), kept until it is deleted; its frontmatter use is the same as the 2026 table above except: green `id` eyebrow, 22pt bold title, and footer `{client} · {project}`. All formats apply the same brand rules. Defined in `templates/styles.css` (PDF), `bin/render-docx.js` (DOCX), and `bin/render-html.js` (HTML).
 
 ### Brand colors
 
@@ -244,6 +266,7 @@ To update, run the same command again.
 cognizone-convert document.md                    # → document.pdf
 cognizone-convert document.md --format docx      # → document.docx
 cognizone-convert document.md output.pdf         # custom output path
+cognizone-convert document.md -b classic         # old brand
 
 # Folder merge (PDF or HTML)
 cognizone-convert docs/                          # → docs.pdf in CWD
@@ -267,3 +290,4 @@ git push origin main --tags
 
 The workflow (`.github/workflows/publish.yml`) runs automatically on any `v*` tag. It publishes to GitHub Packages and creates a **draft** GitHub Release. After the workflow completes, edit the draft on the Releases page with hand-written notes (sections, descriptions) and publish it.
 
+`gh release edit vx.y.z --notes-file notes.md --draft=false` does the last step from the CLI once `gh run watch` shows the workflow passed. Run `npm test` before tagging.

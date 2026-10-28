@@ -6,6 +6,8 @@ test/output/*
 # Keep fixture outputs as sample references
 !test/output/fixture.pdf
 !test/output/fixture.docx
+!test/output/brand-2026.pdf
+!test/output/brand-2026.docx
 
 
 # Confidential reference documents (local only)

@@ -172,7 +172,7 @@ function printPdf(html, outputFile, headerTitle, footer, tmpName) {
   const mermaidJsPath = require.resolve('mermaid/dist/mermaid.min.js');
 
   try {
-    execFileSync('node', [
+    execFileSync(process.execPath, [
       path.join(TEMPLATES_DIR, 'pdf-print.js'),
       tmpHtml, outputFile, headerTitle, footer, ICON_PATH, mermaidJsPath,
     ], { stdio: 'inherit' });

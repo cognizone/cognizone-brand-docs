@@ -61,9 +61,9 @@ Top to bottom:
 
 - Label `CONTENTS` — Roboto Mono bold 8.5 pt pink deep, letter-spacing 3 pt. Space after 10.
 - **H2 entries** — `CHAPTER 01` in Roboto Mono bold 8 pt pink deep; tab stop at 26 mm; heading text Roboto 10.5 pt plum; page number right-aligned in Roboto Mono 8 pt muted. Bottom border 0.25 pt rule colour, 3 pt below the text. Space after 7.
-- **H3 entries** — indented to the 26 mm text column; number (`1.1`) in Roboto Mono 7.5 pt muted, text Roboto 9.5 pt ink, page number as above; no border. Space after 3.
+- **H3 entries** — indented to the 26 mm text column; number (`1.1`) in Roboto Mono 7.5 pt muted, text Roboto 9.5 pt ink, page number as above; no border. Space after 3. The last H3 of a chapter is followed by 11 pt before the next H2 entry, so each chapter's rule stays with its own group.
 - Same heading depth as the classic TOC.
-- DOCX keeps the native Word TOC field (updates on open), with its TOC 1 / TOC 2 styles set to match the above as closely as Word allows.
+- DOCX: a static contents page built from the headings (not a native TOC field, which would copy the CHAPTER label's formatting into the entries). Each entry links to its heading; page numbers are `PAGEREF` fields to bookmarks on the headings, filled in when Word updates fields on open. Word draws space-after inside a bordered paragraph, so DOCX entries put their gaps in space-before (H2 10 pt, H3 3 pt) to keep each rule under its own title.
 
 ## Body
 
@@ -78,7 +78,7 @@ Top to bottom:
 | Bullet lists | Level 1 `•`, level 2 `◦`, level 3 `–`, bullet in pink deep. Indent 6.35 mm per level, hanging 4.2 mm. Space after 4, line height 1.2 |
 | Ordered lists | `1.` / `a.` / `i.` by level, number in pink deep; indents as bullets |
 | Tables | Full width. Header row: plum fill, Roboto bold 8.5 pt white, repeats on each page. Body: Roboto 8.5 pt ink, zebra white / cream starting with white. Horizontal rules only, 0.5 pt rule colour; no vertical borders. Cell padding 3 pt top/bottom, 4.5 pt left/right. Line height 1.05. Column alignment from the Markdown delimiter row is honoured. |
-| Blockquote | Left bar 3 pt pink deep, sand fill, text 8 pt from the bar, indent 3 mm. Text Roboto italic 9.5 pt plum soft. All child blocks (paragraphs, lists) carry the style. |
+| Blockquote | Left bar 3 pt pink deep, sand fill, text 8 pt from the bar, indent 3 mm. Text Roboto italic 9.5 pt plum soft. All child blocks (paragraphs, lists) carry the style. DOCX draws the quote as a single-cell table so it stays one box. |
 | Code block | Roboto Mono 8 pt plum on cream, 0.5 pt rule-colour border with a 3 pt plum left border, padding 6 pt |
 | Inline code | Roboto Mono 8.5 pt pink deep on sand |
 | Horizontal rule | 0.5 pt rule colour, space 10 above and below |
