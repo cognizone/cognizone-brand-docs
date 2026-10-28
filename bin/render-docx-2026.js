@@ -780,16 +780,17 @@ function buildCoverPage(parsed) {
 // ── Contents page ────────────────────────────────────────────────────────────
 // Static entries built from parsed.tocEntries instead of a native TOC field (which
 // copies the heading's direct run formatting, e.g. the CHAPTER label, into entries).
-// Page numbers stay live: PAGEREF fields to the heading bookmarks, refreshed on open.
-// The entries are the cached result of a TOC field, so Word's "Update Table" finds
-// them: "Update page numbers only" repaginates and refreshes every PAGEREF at once,
-// keeping this styling ("Update entire table" rebuilds it in Word's TOC styles).
+// Page numbers are PAGEREF fields to the heading bookmarks. The entries are the cached
+// result of a TOC field, so Word's "Update Table" finds them: "Update page numbers
+// only" repaginates and refreshes every PAGEREF at once, keeping this styling.
+// Nothing updates on open: Word's open-time update rebuilds the TOC field in its own
+// TOC styles (as does "Update entire table"), and fills bare PAGEREFs with 1.
 
 // Raw field parts: docx's own field classes can carry neither run formatting nor a
 // cached result, so the field runs are built here.
-const fldChar = (type, dirty) => new BuilderElement({
+const fldChar = type => new BuilderElement({
   name: 'w:fldChar',
-  attributes: { type: { key: 'w:fldCharType', value: type }, dirty: { key: 'w:dirty', value: dirty } },
+  attributes: { type: { key: 'w:fldCharType', value: type } },
 });
 const instrText = code => new BuilderElement({
   name: 'w:instrText',
@@ -800,7 +801,7 @@ const instrText = code => new BuilderElement({
 // Styled PAGEREF field with a cached placeholder
 function pageRefRuns(bookmark, style) {
   return [
-    new TextRun({ ...style, children: [fldChar('begin', true)] }),
+    new TextRun({ ...style, children: [fldChar('begin')] }),
     new TextRun({ ...style, children: [instrText(`PAGEREF ${bookmark} \\h`)] }),
     new TextRun({ ...style, children: [fldChar('separate')] }),
     new TextRun({ ...style, text: '\u2013' }), // shown until Word updates the field
@@ -1003,8 +1004,6 @@ async function renderDocx(parsed, outputFile) {
   const doc = new Document({
     styles: buildStyles(),
     numbering: buildNumberingConfig(countOrderedLists(tokens)),
-    // Word refreshes fields on open, filling in the contents page PAGEREFs
-    features: { updateFields: true },
     sections: [coverSection, tocSection, bodySection],
   });
 

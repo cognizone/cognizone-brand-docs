@@ -528,6 +528,9 @@ try {
   assert('2026 docx: contents entries wrapped in one TOC field',
     (docXml.match(/TOC \\o &quot;2-4&quot; \\h/g) || []).length === 1
     && tocParas[0].includes('TOC \\o') && ends(tocParas.at(-1)) === 2);
+  // No update on open: Word would rebuild the TOC field in its default TOC styles
+  const settingsXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/settings.xml']).toString();
+  assert('2026 docx: no field update on open', !settingsXml.includes('updateFields') && !docXml.includes('w:dirty'));
 } catch (e) {
   assert('2026 docx: content checks', false, e.message);
 }
