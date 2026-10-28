@@ -832,7 +832,9 @@ function buildTocEntries(tocEntries) {
           { type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP },
         ],
         border: { bottom: TOC_RULE, between: TOC_RULE },
-        spacing: { before: 0, after: 140, line: 240 },
+        // Gap goes before, never after: Word draws space-after inside the border box,
+        // which would push the rule away from the text and onto the next entry
+        spacing: { before: 200, after: 0, line: 240 },
       };
     } else {
       // H3 at the text column, H4 one list indent further: number muted, text ink
@@ -843,7 +845,7 @@ function buildTocEntries(tocEntries) {
       props = {
         indent: { left: TOC_TEXT_COL + (level === 4 ? LIST_INDENT : 0) },
         tabStops: [{ type: TabStopType.RIGHT, position: CONTENT_WIDTH_TWIP }],
-        spacing: { before: 0, after: 60, line: 240 },
+        spacing: { before: 60, after: 0, line: 240 },
       };
     }
     runs.push(new TextRun({ text: '\t' }), ...pageRefRuns(bookmark, TOC_PAGE));
