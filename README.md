@@ -53,7 +53,7 @@ Word documents reference fonts by name, so install [Calistoga](https://fonts.goo
 | `EACCES` / permission error on install (macOS/Linux) | Don't use `sudo`; install Node with a version manager ([Volta](https://volta.sh), [nvm](https://github.com/nvm-sh/nvm)) so global installs go to your home folder. |
 | 404 or authentication error on install | Check that your GitHub account has access to the Cognizone organisation. |
 | `Could not find Chrome` | Run `npx puppeteer browsers install chrome`. On a minimal Linux install Chrome may also need system libraries; see the [Puppeteer troubleshooting guide](https://pptr.dev/troubleshooting). |
-| Word contents page shows `–` or wrong page numbers | Click **Yes** when Word asks to update fields on open, or click the contents page and press F9. |
+| Word contents page shows `–` or wrong page numbers | Choose **References → Update Table → Update page numbers only**. "Update entire table" replaces the 2026 styling with Word's default look. |
 
 ## Usage
 

@@ -521,6 +521,13 @@ try {
   assert('2026 docx: centred table column is centred', centred.includes('<w:jc w:val="center"/>'));
   const quoted = docXml.split('</w:p>').find(p => p.includes('>Quoted list item two<')) || '';
   assert('2026 docx: blockquote list rendered', quoted.includes('<w:i/>'));
+  // Contents entries sit inside one TOC field so Word's "Update Table" refreshes all
+  // their PAGEREFs at once (a bare PAGEREF updated on open reads 1 on every entry)
+  const tocParas = docXml.split('</w:p>').filter(p => p.includes('PAGEREF _toc_'));
+  const ends = p => (p.match(/fldCharType="end"/g) || []).length;
+  assert('2026 docx: contents entries wrapped in one TOC field',
+    (docXml.match(/TOC \\o &quot;2-4&quot; \\h/g) || []).length === 1
+    && tocParas[0].includes('TOC \\o') && ends(tocParas.at(-1)) === 2);
 } catch (e) {
   assert('2026 docx: content checks', false, e.message);
 }

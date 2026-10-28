@@ -63,7 +63,7 @@ Top to bottom:
 - **H2 entries** — `CHAPTER 01` in Roboto Mono bold 8 pt pink deep; tab stop at 26 mm; heading text Roboto 10.5 pt plum; page number right-aligned in Roboto Mono 8 pt muted. Bottom border 0.25 pt rule colour, 3 pt below the text. Space after 7.
 - **H3 entries** — indented to the 26 mm text column; number (`1.1`) in Roboto Mono 7.5 pt muted, text Roboto 9.5 pt ink, page number as above; no border. Space after 3. The last H3 of a chapter is followed by 11 pt before the next H2 entry, so each chapter's rule stays with its own group.
 - Same heading depth as the classic TOC.
-- DOCX: a static contents page built from the headings (not a native TOC field, which would copy the CHAPTER label's formatting into the entries). Each entry links to its heading; page numbers are `PAGEREF` fields to bookmarks on the headings, filled in when Word updates fields on open. Word draws space-after inside a bordered paragraph, so DOCX entries put their gaps in space-before (H2 10 pt, H3 3 pt) to keep each rule under its own title.
+- DOCX: a static contents page built from the headings (not a native TOC field, which would copy the CHAPTER label's formatting into the entries). Each entry links to its heading; page numbers are `PAGEREF` fields to bookmarks on the headings. The entries are the cached result of a `TOC` field, so Word's Update Table → "Update page numbers only" refreshes them all at once and keeps the styling (a bare `PAGEREF` updated on open reads 1). Word draws space-after inside a bordered paragraph, so DOCX entries put their gaps in space-before (H2 10 pt, H3 3 pt) to keep each rule under its own title.
 
 ## Body
 

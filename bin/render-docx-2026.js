@@ -781,22 +781,27 @@ function buildCoverPage(parsed) {
 // Static entries built from parsed.tocEntries instead of a native TOC field (which
 // copies the heading's direct run formatting, e.g. the CHAPTER label, into entries).
 // Page numbers stay live: PAGEREF fields to the heading bookmarks, refreshed on open.
+// The entries are the cached result of a TOC field, so Word's "Update Table" finds
+// them: "Update page numbers only" repaginates and refreshes every PAGEREF at once,
+// keeping this styling ("Update entire table" rebuilds it in Word's TOC styles).
 
-// Styled PAGEREF field with a cached placeholder. docx's PageReference can carry
-// neither run formatting nor a cached result, so the field runs are built here.
+// Raw field parts: docx's own field classes can carry neither run formatting nor a
+// cached result, so the field runs are built here.
+const fldChar = (type, dirty) => new BuilderElement({
+  name: 'w:fldChar',
+  attributes: { type: { key: 'w:fldCharType', value: type }, dirty: { key: 'w:dirty', value: dirty } },
+});
+const instrText = code => new BuilderElement({
+  name: 'w:instrText',
+  attributes: { space: { key: 'xml:space', value: 'preserve' } },
+  children: [` ${code} `],
+});
+
+// Styled PAGEREF field with a cached placeholder
 function pageRefRuns(bookmark, style) {
-  const fldChar = (type, dirty) => new BuilderElement({
-    name: 'w:fldChar',
-    attributes: { type: { key: 'w:fldCharType', value: type }, dirty: { key: 'w:dirty', value: dirty } },
-  });
-  const instr = new BuilderElement({
-    name: 'w:instrText',
-    attributes: { space: { key: 'xml:space', value: 'preserve' } },
-    children: [` PAGEREF ${bookmark} \\h `],
-  });
   return [
     new TextRun({ ...style, children: [fldChar('begin', true)] }),
-    new TextRun({ ...style, children: [instr] }),
+    new TextRun({ ...style, children: [instrText(`PAGEREF ${bookmark} \\h`)] }),
     new TextRun({ ...style, children: [fldChar('separate')] }),
     new TextRun({ ...style, text: '\u2013' }), // shown until Word updates the field
     new TextRun({ ...style, children: [fldChar('end')] }),
@@ -850,8 +855,18 @@ function buildTocEntries(tocEntries) {
     }
     runs.push(new TextRun({ text: '\t' }), ...pageRefRuns(bookmark, TOC_PAGE));
 
-    // Whole entry clickable, like Word's own TOC
-    return new Paragraph({ ...props, children: [new InternalHyperlink({ anchor: bookmark, children: runs })] });
+    // Whole entry clickable, like Word's own TOC. The TOC field opens before the
+    // first entry and closes after the last, as in a TOC Word inserts itself.
+    const children = [new InternalHyperlink({ anchor: bookmark, children: runs })];
+    if (i === 0) {
+      children.unshift(
+        new TextRun({ children: [fldChar('begin')] }),
+        new TextRun({ children: [instrText('TOC \\o "2-4" \\h \\z')] }),
+        new TextRun({ children: [fldChar('separate')] }),
+      );
+    }
+    if (i === tocEntries.length - 1) children.push(new TextRun({ children: [fldChar('end')] }));
+    return new Paragraph({ ...props, children });
   });
 }
 
