@@ -594,7 +594,7 @@ h3 {
 h3 .section-num {
   font-family: 'Roboto Mono', monospace;
   font-size: 10pt;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--pink-deep);
   margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
@@ -611,7 +611,7 @@ h5 .section-num,
 h6 .section-num {
   font-family: 'Roboto Mono', monospace;
   font-size: 9pt;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--pink-deep);
   margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }

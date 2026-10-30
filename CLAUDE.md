@@ -28,6 +28,7 @@ templates/
   logo.png                # Cognizone logo (used in headers)
   2026/                   # 2026 brand: styles.css, pdf-print.js, icon.png
   fonts/                  # Roboto + Roboto Mono variable fonts, Calistoga (2026 titles), TTF
+    static/               # Static Roboto/Roboto Mono instances for the 2026 PDF (variable fonts embed as Type 3)
 reference/                # 2026 style spec + content-free reference .docx (private/ is git-ignored)
 assets/brand-2026/        # 2026 logo pack as delivered (not in the npm package)
 test/

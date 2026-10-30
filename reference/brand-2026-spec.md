@@ -32,6 +32,8 @@ Units: pt unless stated. Word twips = pt × 20; Word half-points = pt × 2.
 | Body, H3, H4, tables | Roboto | `templates/fonts/Roboto[wdth,wght].ttf` (+ italic) |
 | Eyebrows, labels, numbers, code, header/footer | Roboto Mono | `templates/fonts/RobotoMono[wght].ttf` (+ italic) |
 
+PDF uses static Regular / Bold / Italic / Bold Italic instances of Roboto and Roboto Mono (`templates/fonts/static/`, cut from the variable fonts with fontTools `varLib.instancer`): Chrome embeds a variable font as Type 3 glyph outlines, which PDF viewers draw thinner than real fonts. HTML keeps the variable fonts.
+
 Word references fonts by name (no embedding): Calistoga, Roboto and Roboto Mono must be installed where the `.docx` is opened.
 
 ## Page
@@ -71,8 +73,8 @@ Top to bottom:
 |---|---|
 | Body text | Roboto 9.5 pt ink, line height 1.2, space after 6 |
 | **H2** (section `1`) | Eyebrow line: `CHAPTER 01` (number zero-padded, like the reference's `ITEM 01`) in Roboto Mono bold 8.5 pt pink deep, letter-spacing 1 pt, space after 2. Then the heading text in Calistoga 20 pt plum, space after 12. Space before the eyebrow 24. No page break. Keep with next. |
-| **H3** (section `1.1`) | Number in Roboto Mono 10 pt pink deep, a 9 pt gap (PDF/HTML: the title's space plus a 6 pt margin; DOCX: a mono space widened by character spacing), then text in Roboto bold 12 pt plum. Roboto Mono gives the dot a full digit-wide cell, so each dot is pulled in by 0.15 em on both sides (DOCX: character spacing −0.15 em on the dot and the digit before it); otherwise `1.1` reads as `1 . 1`. Bottom border 0.75 pt pink, 3 pt below the text. Space before 14, after 12 (the reference's 6 put the next paragraph right under the rule). DOCX: Word draws space-after inside the border box, above the rule, so the H3 has none and an empty paragraph with an exact 12 pt line follows it. Keep with next. |
-| **H4** (section `1.1.1`) | Number in Roboto Mono 9 pt pink deep (dots tightened as in H3), a 9 pt gap as in H3, then text in Roboto bold 10.5 pt plum soft. Space before 10, after 4. Keep with next. |
+| **H3** (section `1.1`) | Number in Roboto Mono bold 10 pt pink deep (the reference's regular weight looked faint beside the bold title), a 9 pt gap (PDF/HTML: the title's space plus a 6 pt margin; DOCX: a mono space widened by character spacing), then text in Roboto bold 12 pt plum. Roboto Mono gives the dot a full digit-wide cell, so each dot is pulled in by 0.15 em on both sides (DOCX: character spacing −0.15 em on the dot and the digit before it); otherwise `1.1` reads as `1 . 1`. Bottom border 0.75 pt pink, 3 pt below the text. Space before 14, after 12 (the reference's 6 put the next paragraph right under the rule). DOCX: Word draws space-after inside the border box, above the rule, so the H3 has none and an empty paragraph with an exact 12 pt line follows it. Keep with next. |
+| **H4** (section `1.1.1`) | Number in Roboto Mono bold 9 pt pink deep (dots tightened as in H3), a 9 pt gap as in H3, then text in Roboto bold 10.5 pt plum soft. Space before 10, after 4. Keep with next. |
 | Bold / italic | Same colour as the surrounding text |
 | Links | Blue, no underline |
 | Bullet lists | Level 1 `•`, level 2 `◦`, level 3 `–`, bullet in pink deep. Roboto's `•` is only 0.21 em across, so it is set at 1.6× the text size with its centre on the text's x-height middle (PDF/HTML: line height 0.9 on the bullet; DOCX: 15 pt, lowered 3 pt). `◦` and `–` are text size. Indent 6.35 mm per level, hanging 4.2 mm. Space after 4, line height 1.2 |

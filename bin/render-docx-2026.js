@@ -326,7 +326,7 @@ function headingParagraphs(token) {
         keepLines: true,
       }));
     } else {
-      const num = { font: FONT_MONO, size: level === 3 ? 20 : 18, color: PINK_DEEP };
+      const num = { font: FONT_MONO, size: level === 3 ? 20 : 18, bold: true, color: PINK_DEEP };
       // A 9pt gap to the title: the mono space (0.6 em) widened by character spacing
       children.push(...numberRuns(token._number, num),
         new TextRun({ text: ' ', ...num, characterSpacing: Math.round((9 - 0.6 * num.size / 2) * 20) }));

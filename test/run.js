@@ -576,6 +576,14 @@ try {
   assert('2026 docx: in-document link jumps to its heading bookmark', false, e.stderr?.toString() || e.message);
 }
 
+// Chrome embeds a variable font as Type 3 outlines (no BaseFont), which viewers draw thin;
+// the 2026 PDF uses static instances, which embed as named TrueType fonts
+{
+  const pdf = fs.readFileSync(path.join(OUT_DIR, 'brand-2026.pdf')).toString('latin1');
+  assert('2026 pdf: Roboto and Roboto Mono embed as TrueType, not Type 3',
+    /\/BaseFont \/[A-Z]{6}\+Roboto-Regular/.test(pdf) && /\/BaseFont \/[A-Z]{6}\+RobotoMono-Bold/.test(pdf));
+}
+
 // No flag and no frontmatter → 2026 (the default); `brand: classic` in frontmatter opts out
 for (const [label, fm, want2026] of [['default is 2026', '', true], ['frontmatter brand selects classic', 'brand: classic\n', false]]) {
   try {

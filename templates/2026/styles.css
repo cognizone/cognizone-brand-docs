@@ -7,31 +7,63 @@
   font-style: normal;
 }
 
+/* Static instances of the variable fonts (cut with fontTools varLib.instancer). Chrome
+   embeds a variable font in a PDF as Type 3 glyph outlines, which viewers draw thinner
+   than real fonts and do not treat as text fonts; static TTFs embed as TrueType. */
+
 @font-face {
   font-family: 'Roboto';
-  src: url('../fonts/Roboto[wdth,wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('../fonts/static/Roboto-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
   font-family: 'Roboto';
-  src: url('../fonts/Roboto-Italic[wdth,wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('../fonts/static/Roboto-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/static/Roboto-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('../fonts/static/Roboto-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
   font-style: italic;
 }
 
 @font-face {
   font-family: 'Roboto Mono';
-  src: url('../fonts/RobotoMono[wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('../fonts/static/RobotoMono-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
   font-family: 'Roboto Mono';
-  src: url('../fonts/RobotoMono-Italic[wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('../fonts/static/RobotoMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('../fonts/static/RobotoMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('../fonts/static/RobotoMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
   font-style: italic;
 }
 
@@ -124,7 +156,7 @@ h3 {
 h3 .header-section-number {
   font-family: 'Roboto Mono', monospace;
   font-size: 10pt;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--pink-deep);
   margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
@@ -147,7 +179,7 @@ h5 .header-section-number,
 h6 .header-section-number {
   font-family: 'Roboto Mono', monospace;
   font-size: 9pt;
-  font-weight: 400;
+  font-weight: 700;
   color: var(--pink-deep);
   margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
