@@ -43,8 +43,11 @@ const ADDRESS = 'Cognizone BV · Avenue Arnaud Fraiteur 15-23, 1050 Ixelles, Bel
 // H2-level section numbers are a chapter label ("CHAPTER 01", like the reference's
 // "ITEM 01"); deeper ones stay "1.1". Merged master-TOC document entries pass a
 // ready-made "DOCUMENT 01" label through unchanged.
+// Section numbers are digits and dots only, so the markup is safe. Roboto Mono gives
+// the dot a full digit-wide cell; .num-dot pulls it in so `1.1` does not read as `1 . 1`
 function displayNumber(number, level) {
-  return level === 2 && /^\d+$/.test(number) ? `CHAPTER ${number.padStart(2, '0')}` : number;
+  if (level === 2 && /^\d+$/.test(number)) return `CHAPTER ${number.padStart(2, '0')}`;
+  return number.replace(/\./g, '<span class="num-dot">.</span>');
 }
 
 // ── TOC HTML ──────────────────────────────────────────────────────────────────

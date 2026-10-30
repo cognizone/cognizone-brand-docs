@@ -18,7 +18,8 @@ const PLUM  = '#2F2450';
 const MUTED = '#6B6185';
 const RULE  = '#E2D8CB';
 
-// Icon is 512×512; image-set's resolution scales it to 4.2mm (≈15.9 CSS px).
+// Icon is cropped from a 512×512 square; image-set's resolution keeps the density at
+// 512 px per 4.2mm, so the nodes stay their old size (3.4mm tall).
 const ICON_RESOLUTION = (512 / (4.2 * 96 / 25.4)).toFixed(2);
 const iconUri = iconPath && fs.existsSync(iconPath)
   ? `data:image/png;base64,${fs.readFileSync(iconPath).toString('base64')}`
@@ -43,7 +44,7 @@ const FOOTER_BOX = `vertical-align: bottom; margin-top: 0; margin-bottom: 12.5mm
 const pageCss = `
 @page {
   @top-left {
-    content: ${iconUri ? `image-set(url("${iconUri}") ${ICON_RESOLUTION}x) ` : ''}" Cognizone";
+    content: ${iconUri ? `image-set(url("${iconUri}") ${ICON_RESOLUTION}x) "\\2002 Cognizone"` : '"Cognizone"'}; /* en space: half the icon height */
     width: 30%; ${HEADER_BOX}
     font-family: 'Roboto', sans-serif; font-size: 8.5pt; font-weight: 700; color: ${PLUM};
   }

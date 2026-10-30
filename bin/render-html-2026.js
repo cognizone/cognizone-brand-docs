@@ -105,8 +105,11 @@ function escapeHtml(str) {
 // H2-level section numbers are a chapter label ("CHAPTER 01", like the reference's
 // "ITEM 01"); deeper ones stay "1.1". Merged master-TOC document entries pass a
 // ready-made "DOCUMENT 01" label through unchanged.
+// Section numbers are digits and dots only, so the markup is safe. Roboto Mono gives
+// the dot a full digit-wide cell; .num-dot pulls it in so `1.1` does not read as `1 . 1`
 function displayNumber(number, level) {
-  return level === 2 && /^\d+$/.test(number) ? `CHAPTER ${number.padStart(2, '0')}` : number;
+  if (level === 2 && /^\d+$/.test(number)) return `CHAPTER ${number.padStart(2, '0')}`;
+  return number.replace(/\./g, '<span class="num-dot">.</span>');
 }
 
 function lockupHtml() {
@@ -185,7 +188,7 @@ function tocHtml(tocEntries, idPrefix = '') {
     }
     const anchor = `${idPrefix}${entry.id}`;
     const num = entry.number ? displayNumber(entry.number, level) : '';
-    lines.push(`<li><a href="#${anchor}"><span class="toc-num">${escapeHtml(num)}</span><span class="toc-title">${escapeHtml(entry.text)}</span></a>`);
+    lines.push(`<li><a href="#${anchor}"><span class="toc-num">${num}</span><span class="toc-title">${escapeHtml(entry.text)}</span></a>`);
     prev = level;
   }
 
@@ -295,7 +298,7 @@ body {
 .doc-header .header-brand {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 6.4px;                     /* half the icon height, as the brand lockup */
   flex-shrink: 0;
   font-size: 8.5pt;
   font-weight: 700;
@@ -303,8 +306,8 @@ body {
 }
 
 .doc-header .header-brand img {
-  width: 16px;
-  height: 16px;
+  width: auto;
+  height: 12.8px;                 /* icon is cropped to its nodes: same size as the old 16px square */
 }
 
 .doc-header .header-title {
@@ -361,9 +364,13 @@ body {
 }
 
 .cover-lockup img {
-  width: 64px;
-  height: 64px;
-  margin-right: 0.5em;
+  width: auto;
+  height: 51.25px;                /* icon is cropped to its nodes: same size as the old 64px square */
+  margin-right: 25.6px;           /* half the icon height, as the brand lockup */
+}
+
+.num-dot {
+  margin: 0 -0.15em;              /* Roboto Mono's dot cell is digit-wide: pull it in */
 }
 
 .cover-eyebrow {
@@ -579,7 +586,7 @@ h3 {
   font-size: 12pt;
   font-weight: 700;
   color: var(--plum);
-  margin: 14pt 0 6pt 0;
+  margin: 14pt 0 12pt 0;
   padding-bottom: 3pt;
   border-bottom: 0.75pt solid var(--pink);
 }
@@ -589,6 +596,7 @@ h3 .section-num {
   font-size: 10pt;
   font-weight: 400;
   color: var(--pink-deep);
+  margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
 
 h4, h5, h6 {
@@ -605,6 +613,7 @@ h6 .section-num {
   font-size: 9pt;
   font-weight: 400;
   color: var(--pink-deep);
+  margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
 
 /* ── Body text ──────────────────────────────────────────────────────────────*/
@@ -733,9 +742,13 @@ ul > li::before {
   left: -4.2mm;
   color: var(--pink-deep);
   font-style: normal;
+  /* Roboto's • is 0.21 em across, barely bigger than a full stop: 1.6×. The line height
+     drops its centre (0.37 em up) onto the text's x-height middle (0.26 em up) */
+  font-size: 1.6em;
+  line-height: 0.9;
 }
-:is(ul, ol) ul > li::before { content: '◦'; }
-:is(ul, ol) :is(ul, ol) ul > li::before { content: '–'; }
+:is(ul, ol) ul > li::before { content: '◦'; font-size: 1em; line-height: 1.2; }
+:is(ul, ol) :is(ul, ol) ul > li::before { content: '–'; font-size: 1em; line-height: 1.2; }
 
 ol { list-style-type: decimal; }
 :is(ul, ol) ol { list-style-type: lower-alpha; }

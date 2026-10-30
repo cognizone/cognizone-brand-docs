@@ -16,7 +16,7 @@ const {
   AlignmentType, HeadingLevel, WidthType, BorderStyle, TableLayoutType,
   SectionType, TabStopType, ShadingType, LevelFormat, VerticalAlignTable,
   FrameAnchorType, HorizontalPositionAlign, VerticalPositionAlign, HeightRule,
-  convertMillimetersToTwip,
+  convertMillimetersToTwip, LineRuleType,
 } = docx;
 
 // ── Brand constants (reference/brand-2026-spec.md) ───────────────────────────
@@ -109,10 +109,12 @@ function collectMermaidBlocks(tokens) {
 
 // ── Numbering definitions (bullets + ordered) ────────────────────────────────
 // Bullets and numbers are pink deep; the item text keeps the paragraph colour
-function listLevelStyle(level) {
+function listLevelStyle(level, bullet = false) {
   return {
     paragraph: { indent: { left: LIST_INDENT * (level + 1), hanging: LIST_HANGING } },
-    run: { color: PINK_DEEP },
+    // Roboto's • is 0.21 em across, barely bigger than a full stop: 15pt (1.6× body), lowered
+    // 3pt so its centre (0.37 em up) sits on the text's x-height middle. ◦ and – stay
+    run: bullet && level % 3 === 0 ? { color: PINK_DEEP, size: 30, position: -6 } : { color: PINK_DEEP },
   };
 }
 
@@ -139,7 +141,7 @@ function buildNumberingConfig(orderedListCount) {
         format: LevelFormat.BULLET,
         text: bulletChars[level % 3],
         alignment: AlignmentType.LEFT,
-        style: listLevelStyle(level),
+        style: listLevelStyle(level, true),
       })),
     },
   ];
@@ -324,12 +326,10 @@ function headingParagraphs(token) {
         keepLines: true,
       }));
     } else {
-      children.push(new TextRun({
-        text: token._number + ' ',
-        font: FONT_MONO,
-        size: level === 3 ? 20 : 18,
-        color: PINK_DEEP,
-      }));
+      const num = { font: FONT_MONO, size: level === 3 ? 20 : 18, color: PINK_DEEP };
+      // A 9pt gap to the title: the mono space (0.6 em) widened by character spacing
+      children.push(...numberRuns(token._number, num),
+        new TextRun({ text: ' ', ...num, characterSpacing: Math.round((9 - 0.6 * num.size / 2) * 20) }));
     }
   }
   children.push(...contentRuns);
@@ -345,6 +345,14 @@ function headingParagraphs(token) {
     keepNext: true,
     keepLines: true,
   }));
+  // H3 gap below its rule. Word draws space-after inside the border box (above the rule),
+  // so the H3 has none and this empty exact-height paragraph holds the 12pt instead
+  if (level === 3) {
+    paragraphs.push(new Paragraph({
+      spacing: { before: 0, after: 0, line: 240, lineRule: LineRuleType.EXACT },
+      keepNext: true,
+    }));
+  }
   return paragraphs;
 }
 
@@ -614,21 +622,44 @@ function tableBorders() {
   return { top: b, bottom: b, insideHorizontal: b, left: NO_BORDER, right: NO_BORDER, insideVertical: NO_BORDER };
 }
 
-function iconRun(px) {
-  return new ImageRun({
-    data: fs.readFileSync(ICON_PATH),
-    transformation: { width: px, height: px },
-    type: 'png',
-  });
+// Icon + "Cognizone" wordmark, as the brand's horizontal lockup: the icon is cropped to
+// its nodes (so it starts on the margin), the gap is half the icon height, and the
+// wordmark is raised so its capitals centre on the icon (Word sits an inline picture on
+// the text baseline). Sizes in pt (position is in half-points); Roboto's space is
+// 0.248 em, its cap height 0.711 em.
+function lockupRuns(iconPt, fontPt) {
+  const runs = [];
+  if (fs.existsSync(ICON_PATH)) {
+    const png = fs.readFileSync(ICON_PATH);
+    const px = iconPt * 96 / 72;
+    runs.push(new ImageRun({
+      data: png,
+      transformation: { width: px * png.readUInt32BE(16) / png.readUInt32BE(20), height: px },
+      type: 'png',
+    }));
+    runs.push(new TextRun({ text: ' ', font: FONT_BODY, size: fontPt * 2,
+      characterSpacing: Math.round((iconPt / 2 - 0.248 * fontPt) * 20) }));
+  }
+  runs.push(new TextRun({ text: 'Cognizone', bold: true, font: FONT_BODY, size: fontPt * 2, color: PLUM,
+    ...(runs.length ? { position: Math.round(iconPt - 0.711 * fontPt) } : {}) }));
+  return runs;
+}
+
+// Roboto Mono gives the dot a full digit-wide cell, so `1.1` reads as `1 . 1`. Character
+// spacing is added after a character: tighten the digit before each dot and the dot itself
+function numberRuns(text, props) {
+  const tight = Math.round(-0.15 * props.size / 2 * 20);
+  return text.split(/(\d\.)/).filter(Boolean).map(part => new TextRun({
+    text: part, ...props, ...(part.endsWith('.') ? { characterSpacing: tight } : {}),
+  }));
 }
 
 // ── Build header/footer ──────────────────────────────────────────────────────
 function buildHeader(headerTitle) {
   const children = [];
 
-  // Icon (4.2mm) + "Cognizone" wordmark on the left
-  if (fs.existsSync(ICON_PATH)) children.push(iconRun(16));
-  children.push(new TextRun({ text: ' Cognizone', bold: true, font: FONT_BODY, size: 17, color: PLUM }));
+  // Icon (3.4mm, the nodes of the old 4.2mm square) + "Cognizone" wordmark on the left
+  children.push(...lockupRuns(9.6, 8.5));
 
   // Tab + `{id} - {title}` on the right
   children.push(new TextRun({ text: '\t', font: FONT_MONO, size: 14 }));
@@ -664,12 +695,9 @@ function buildCoverPage(parsed) {
   const { title, subtitle, summary, id, type, status, version, date, author, client, project, classification } = parsed;
   const children = [];
 
-  // 1. Logo lockup: icon (17mm) + two spaces + "Cognizone" wordmark (live text)
+  // 1. Logo lockup: icon (13.6mm, the nodes of the old 17mm square) + "Cognizone" wordmark (live text)
   children.push(new Paragraph({
-    children: [
-      ...(fs.existsSync(ICON_PATH) ? [iconRun(64)] : []),
-      new TextRun({ text: '  Cognizone', bold: true, font: FONT_BODY, size: 40, color: PLUM }),
-    ],
+    children: lockupRuns(38.5, 20),
     spacing: { before: 400, after: 1600, line: 240 },
   }));
 
@@ -849,7 +877,7 @@ function buildTocEntries(tocEntries) {
     } else {
       // H3 at the text column, H4 one list indent further: number muted, text ink
       runs = [
-        new TextRun({ text: entry.number + ' ', font: FONT_MONO, size: 15, color: MUTED }),
+        ...numberRuns(entry.number + ' ', { font: FONT_MONO, size: 15, color: MUTED }),
         new TextRun({ text: entry.text, font: FONT_BODY, size: 19, color: INK }),
       ];
       props = {
@@ -898,7 +926,8 @@ function buildStyles() {
         run: { font: FONT_BODY, size: 24, color: PLUM, bold: true, italics: false },
         paragraph: {
           outlineLevel: 2,
-          spacing: { before: 280, after: 120, line: 264 },
+          // after: 0, the gap below the rule is a spacer paragraph (see headingParagraphs)
+          spacing: { before: 280, after: 0, line: 264 },
           keepNext: true,
           border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: PINK, space: 3 } },
         },

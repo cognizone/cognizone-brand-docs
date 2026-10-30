@@ -531,6 +531,17 @@ try {
   // No update on open: Word would rebuild the TOC field in its default TOC styles
   const settingsXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/settings.xml']).toString();
   assert('2026 docx: no field update on open', !settingsXml.includes('updateFields') && !docXml.includes('w:dirty'));
+  // Cover lockup: Word sits the icon on the baseline, so the wordmark is raised to centre on it
+  assert('2026 docx: cover wordmark raised onto the icon', /<w:position w:val="\d+"\/>[\s\S]*?<w:t[^>]*>Cognizone<\/w:t>/.test(docXml));
+  // Section numbers: the digit-wide mono dot is pulled in, so `1.1` does not read as `1 . 1`
+  // H3: 9pt gap after the number; the gap below the rule is an exact-height spacer, because
+  // Word draws space-after inside the border box
+  assert('2026 docx: H3 number gap widened', /<w:spacing w:val="60"\/>[^<]*(<[^>]*>[^<]*){0,6}<w:t xml:space="preserve"> <\/w:t>/.test(docXml));
+  assert('2026 docx: H3 spacer paragraph after each H3',
+    (docXml.match(/w:lineRule="exact"/g) || []).length === (docXml.match(/w:val="Heading3"/g) || []).length);
+  const numXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/numbering.xml']).toString();
+  assert('2026 docx: level-1 bullet enlarged', /<w:lvlText w:val="•"\/>[\s\S]*?<w:sz w:val="30"\/>/.test(numXml));
+  assert('2026 docx: section-number dots tightened', /<w:spacing w:val="-30"\/>[\s\S]*?<w:t[^>]*>\d\.<\/w:t>/.test(docXml));
 } catch (e) {
   assert('2026 docx: content checks', false, e.message);
 }
@@ -539,6 +550,9 @@ try {
   const html = fs.readFileSync(path.join(OUT_DIR, 'brand-2026.html'), 'utf8');
   assert('2026 html: Calistoga embedded', /@font-face\s*{[^}]*Calistoga/.test(html));
   assert('2026 html: plum brand colour', /#2F2450/i.test(html));
+  assert('2026 html: bullet enlarged and H3 gaps widened',
+    /ul > li::before \{[^}]*font-size: 1\.6em/.test(html) && /h3 \.section-num \{[^}]*margin-right: 6pt/.test(html));
+  assert('2026 html: section-number dots tightened', /\d<span class="num-dot">\.<\/span>\d/.test(html) && html.includes('.num-dot {'));
   assert('2026 html: subtitle and summary on cover',
     html.includes('Second title line') && html.includes('Cover summary paragraph.'));
   assert('2026 html: no external requests', !/(src|href)=["']https?:\/\/(?!cogni\.zone)/.test(html.replace(/<a [^>]*>/g, '')));
