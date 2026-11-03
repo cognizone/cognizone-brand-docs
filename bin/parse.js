@@ -25,7 +25,24 @@ function rawFrontmatterValue(rawMatter, key) {
   return v;
 }
 
-function parseMarkdown(inputFile) {
+// Replace each link whose href is not an in-document "#anchor" with its own
+// child tokens: the text (and its formatting) stays, the link goes. Covers
+// https://, mailto: and relative links to docs that are not in the delivery.
+function stripExternalLinks(tokens) {
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const t = tokens[i];
+    if (t.type === 'link' && !t.href.startsWith('#')) {
+      tokens.splice(i, 1, ...(t.tokens || []));
+      continue;
+    }
+    if (t.tokens) stripExternalLinks(t.tokens);
+    for (const item of t.items || []) if (item.tokens) stripExternalLinks(item.tokens);
+    for (const cell of t.header || []) if (cell.tokens) stripExternalLinks(cell.tokens);
+    for (const row of t.rows || []) for (const cell of row) if (cell.tokens) stripExternalLinks(cell.tokens);
+  }
+}
+
+function parseMarkdown(inputFile, opts = {}) {
   const parsedMatter = matter(fs.readFileSync(inputFile, 'utf8'));
   const { data: fm, content: mdBody } = parsedMatter;
   const rawMatter = parsedMatter.matter;
@@ -52,6 +69,7 @@ function parseMarkdown(inputFile) {
 
   // Lex into token tree
   const tokens = marked.lexer(mdNoH1);
+  if (opts.stripExternalLinks) stripExternalLinks(tokens);
 
   // Walk tokens to compute section numbers + TOC entries
   const sectionCounters = [0, 0, 0, 0, 0, 0];

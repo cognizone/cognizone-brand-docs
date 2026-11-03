@@ -268,6 +268,7 @@ cognizone-convert document.md                    # → document.pdf
 cognizone-convert document.md --format docx      # → document.docx
 cognizone-convert document.md output.pdf         # custom output path
 cognizone-convert document.md -b classic         # old brand
+cognizone-convert document.md --no-external-links  # non-#anchor links → plain text (stripped in parse.js, all formats)
 
 # Folder merge (PDF or HTML)
 cognizone-convert docs/                          # → docs.pdf in CWD

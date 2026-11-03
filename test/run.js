@@ -579,6 +579,30 @@ try {
   assert('2026 docx: in-document link jumps to its heading bookmark', false, e.stderr?.toString() || e.message);
 }
 
+// --no-external-links: external and relative links become plain text, "#anchor" links stay
+try {
+  const md = path.join(OUT_DIR, 'no-ext-links.md');
+  fs.writeFileSync(md, '---\ntitle: No external links\n---\n\n## One\n\n'
+    + 'Para [**site**](https://example.com/a) and [spec](other-spec.md#x) and [Two](#two).\n\n'
+    + '- item [gh](https://github.com/x/y)\n\n| A |\n|---|\n| [cell](https://example.com/c) |\n\n## Two\n\nText.\n');
+  const htmlOut = path.join(OUT_DIR, 'no-ext-links.html');
+  execFileSync(process.execPath, [CONVERT, md, htmlOut, '--format', 'html', '--no-external-links'], { stdio: 'pipe' });
+  const html = fs.readFileSync(htmlOut, 'utf8');
+  assert('no-external-links html: external/relative links gone, text kept, #anchor kept',
+    !/href="(https:\/\/(example|github)\.com|other-spec\.md)/.test(html)
+    && html.includes('<p>Para <strong>site</strong> and spec and <a href="#two">Two</a>.</p>')
+    && html.includes('item gh') && html.includes('<td>cell</td>'));
+  const docxOut = path.join(OUT_DIR, 'no-ext-links.docx');
+  execFileSync(process.execPath, [CONVERT, md, docxOut, '--format', 'docx', '--no-external-links'], { stdio: 'pipe' });
+  const xml = execFileSync('unzip', ['-p', docxOut, 'word/document.xml']).toString();
+  const rels = execFileSync('unzip', ['-p', docxOut, 'word/_rels/document.xml.rels']).toString();
+  assert('no-external-links docx: no hyperlink rels, #anchor still an internal link',
+    !rels.includes('TargetMode="External"') && xml.includes('>cell<')
+    && /w:anchor="_toc_\d+"/.test(xml.split('</w:p>').find(p => p.includes('>Para <')) || ''));
+} catch (e) {
+  assert('no-external-links: plain text links', false, e.stderr?.toString() || e.message);
+}
+
 // Chrome embeds a variable font as Type 3 outlines (no BaseFont), which viewers draw thin;
 // the 2026 PDF uses static instances, which embed as named TrueType fonts
 {

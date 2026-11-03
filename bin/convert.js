@@ -11,6 +11,7 @@ const { parseMarkdown } = require('./parse');
 const args = process.argv.slice(2);
 let format = 'pdf';
 let brandArg;
+let stripExternalLinks = false;
 let inputArg, outputArg;
 
 for (let i = 0; i < args.length; i++) {
@@ -18,6 +19,8 @@ for (let i = 0; i < args.length; i++) {
     format = args[++i].toLowerCase();
   } else if ((args[i] === '--brand' || args[i] === '-b') && args[i + 1]) {
     brandArg = args[++i].toLowerCase();
+  } else if (args[i] === '--no-external-links') {
+    stripExternalLinks = true;
   } else if (!inputArg) {
     inputArg = args[i];
   } else if (!outputArg) {
@@ -26,7 +29,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!inputArg) {
-  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand 2026|classic]');
+  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand 2026|classic] [--no-external-links]');
   process.exit(1);
 }
 
@@ -90,7 +93,7 @@ async function main() {
     }
 
     console.log(`Found ${mdFiles.length} markdown file(s) in ${path.basename(inputPath)}/`);
-    const parsedDocs = mdFiles.map(f => parseMarkdown(f));
+    const parsedDocs = mdFiles.map(f => parseMarkdown(f, { stripExternalLinks }));
 
     const folderName = path.basename(inputPath);
     const ext = format === 'html' ? '.html' : '.pdf';
@@ -108,7 +111,7 @@ async function main() {
   } else {
     const ext = format === 'docx' ? '.docx' : format === 'html' ? '.html' : '.pdf';
     const outputFile = path.resolve(outputArg || inputPath.replace(/\.md$/, ext));
-    const parsed = parseMarkdown(inputPath);
+    const parsed = parseMarkdown(inputPath, { stripExternalLinks });
     const brand = pickBrand(parsed);
 
     if (format === 'docx') {

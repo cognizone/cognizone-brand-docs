@@ -24,6 +24,8 @@ Options:
   -b, --brand <2026|classic>    Brand (default: 2026, or the document's
                                 \`brand:\` frontmatter field). classic is the
                                 old brand, kept for a short transition.
+      --no-external-links       Render links to other files or sites as plain
+                                text; in-document #heading links still work.
   -v, --version                 Print version and exit
   -h, --help                    Show this help message
 
@@ -34,6 +36,7 @@ Examples:
   cognizone-convert document.md output.pdf
   cognizone-convert document.md -f docx
   cognizone-convert document.md -b classic     # old brand
+  cognizone-convert document.md -f docx --no-external-links
   cognizone-convert docs/                      # merge folder → PDF
   cognizone-convert docs/ -f html              # merge folder → HTML
   cognizone-convert docs/ merged-output.pdf
