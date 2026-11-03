@@ -634,12 +634,15 @@ try {
   const dir = path.join(OUT_DIR, 'link-base', 'specs', 'EVR-13');
   fs.mkdirSync(dir, { recursive: true });
   const md = path.join(dir, 'search.md');
-  fs.writeFileSync(md, '---\ntitle: Link base\n---\n\n## One\n\nSee [case model](../EVR-10/case%20model.md#states).\n');
+  fs.writeFileSync(md, '---\ntitle: Link base\n---\n\n## One\n\nSee [case model](../EVR-10/case%20model.md#states) and [outside](../../../outside.md).\n');
   const out = path.join(dir, 'search.docx');
-  execFileSync(process.execPath, [CONVERT, md, out, '--format', 'docx', '--link-base',
+  execFileSync(process.execPath, [CONVERT, md, out, '--format', 'docx', '--no-external-links', '--link-base',
     'https://x.sharepoint.com/sites/REG/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2FREG%2FShared%20Documents%2Fdelivery&viewid=1'],
     { cwd: path.join(OUT_DIR, 'link-base'), stdio: 'pipe' });
   const rels = execFileSync('unzip', ['-p', out, 'word/_rels/document.xml.rels']).toString();
+  const xml = execFileSync('unzip', ['-p', out, 'word/document.xml']).toString();
+  assert('link-base docx: link outside the cwd is plain text with --no-external-links',
+    (rels.match(/TargetMode="External"/g) || []).length === 1 && xml.includes('outside'));
   assert('link-base docx: absolute SharePoint link (?web=1) from library-view URL',
     rels.includes('Target="https://x.sharepoint.com/sites/REG/Shared%20Documents/delivery/specs/EVR-10/case%20model.docx?web=1"'));
 } catch (e) {

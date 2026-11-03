@@ -40,8 +40,9 @@ function absoluteLink(href, opts) {
   try { p = decodeURI(href); } catch { /* keep as written */ }
   const rel = path.relative(opts.linkRoot, path.resolve(opts.inputDir, p));
   if (rel.startsWith('..') || path.isAbsolute(rel)) {
-    console.warn(`--link-base: ${href} is outside ${opts.linkRoot}; left relative.`);
-    return href;
+    // a relative link can't work on SharePoint: plain text when dead links are stripped
+    console.warn(`--link-base: ${href} is outside ${opts.linkRoot}; ${opts.stripExternal ? 'plain text' : 'left relative'}.`);
+    return opts.stripExternal ? null : href;
   }
   const url = new URL(rel.split(path.sep).map(encodeURIComponent).join('/'), opts.linkBase);
   // SharePoint downloads a plain file URL; ?web=1 opens it in Word (or the viewer) in the browser
@@ -54,8 +55,9 @@ function rewriteLinks(tokens, opts) {
     const t = tokens[i];
     if (t.type === 'link') {
       const m = opts.docExt && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(t.href) && t.href.match(/^([^#?]*)\.md(?:[?#].*)?$/i);
-      if (m) {
-        t.href = opts.linkBase ? absoluteLink(m[1] + opts.docExt, opts) : m[1] + opts.docExt;
+      const href = m && (opts.linkBase ? absoluteLink(m[1] + opts.docExt, opts) : m[1] + opts.docExt);
+      if (href) {
+        t.href = href;
         continue;
       }
       if (opts.stripExternal && !t.href.startsWith('#')) {
