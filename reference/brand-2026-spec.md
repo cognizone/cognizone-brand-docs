@@ -78,7 +78,7 @@ Top to bottom:
 | Bold / italic | Same colour as the surrounding text |
 | Links | Blue, no underline |
 | Bullet lists | Level 1 `•`, level 2 `◦`, level 3 `–`, bullet in pink deep. Roboto's `•` is only 0.21 em across, so it is set at 1.6× the text size with its centre on the text's x-height middle (PDF/HTML: line height 0.9 on the bullet; DOCX: 15 pt, lowered 3 pt). `◦` and `–` are text size. Indent 6.35 mm per level, hanging 4.2 mm. Space after 4, line height 1.2 |
-| Ordered lists | `1.` / `a.` / `i.` by level, number in pink deep; indents as bullets |
+| Ordered lists | `1.` / `a.` / `i.` by level, number in pink deep; indent as bullets, but DOCX hangs the full 6.35 mm so `10.` and `viii.` still fit before the tab (at 4.2 mm the tab jumps to Word's next default stop) |
 | Tables | Full width. Header row: plum fill, Roboto bold 8.5 pt white, repeats on each page. Body: Roboto 8.5 pt ink, zebra white / cream starting with white. Horizontal rules only, 0.5 pt rule colour; no vertical borders. Cell padding 3 pt top/bottom, 4.5 pt left/right. Line height 1.05. Column alignment from the Markdown delimiter row is honoured. |
 | Blockquote | Left bar 3 pt pink deep, sand fill, text 8 pt from the bar, indent 3 mm. Text Roboto italic 9.5 pt plum soft. All child blocks (paragraphs, lists) carry the style. DOCX draws the quote as a single-cell table so it stays one box. |
 | Code block | Roboto Mono 8 pt plum on cream, 0.5 pt rule-colour border with a 3 pt plum left border, padding 6 pt |

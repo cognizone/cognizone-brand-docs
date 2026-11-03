@@ -540,6 +540,9 @@ try {
   assert('2026 docx: H3 spacer paragraph after each H3',
     (docXml.match(/w:lineRule="exact"/g) || []).length === (docXml.match(/w:val="Heading3"/g) || []).length);
   const numXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/numbering.xml']).toString();
+  assert('2026 docx: numbered lists hang 6.35mm so "10." keeps its tab, bullets 4.2mm',
+    /<w:numFmt w:val="decimal"\/>[\s\S]*?<w:ind w:left="360" w:hanging="360"\/>/.test(numXml) &&
+    /<w:lvlText w:val="•"\/>[\s\S]*?<w:ind w:left="360" w:hanging="240"\/>/.test(numXml));
   assert('2026 docx: level-1 bullet enlarged', /<w:lvlText w:val="•"\/>[\s\S]*?<w:sz w:val="30"\/>/.test(numXml));
   assert('2026 docx: section-number dots tightened', /<w:spacing w:val="-30"\/>[\s\S]*?<w:t[^>]*>\d\.<\/w:t>/.test(docXml));
 } catch (e) {

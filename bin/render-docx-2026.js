@@ -63,7 +63,9 @@ const HEADER_DISTANCE = convertMillimetersToTwip(12.5);
 const CONTENT_WIDTH_TWIP = convertMillimetersToTwip(170);
 // TOC text column (H2 number → text tab stop, H3 indent)
 const TOC_TEXT_COL = convertMillimetersToTwip(26);
-// List indent per level 6.35mm, hanging 4.2mm (exact reference values)
+// List indent per level 6.35mm, bullet hanging 4.2mm (exact reference values). Numbered
+// lists hang the full 6.35mm: a number wider than the hanging indent ("10.", "viii.")
+// pushes the tab on to Word's next default tab stop, 12.7mm out
 const LIST_INDENT  = 360;
 const LIST_HANGING = 240;
 
@@ -111,7 +113,7 @@ function collectMermaidBlocks(tokens) {
 // Bullets and numbers are pink deep; the item text keeps the paragraph colour
 function listLevelStyle(level, bullet = false) {
   return {
-    paragraph: { indent: { left: LIST_INDENT * (level + 1), hanging: LIST_HANGING } },
+    paragraph: { indent: { left: LIST_INDENT * (level + 1), hanging: bullet ? LIST_HANGING : LIST_INDENT } },
     // Roboto's • is 0.21 em across, barely bigger than a full stop: 15pt (1.6× body), lowered
     // 3pt so its centre (0.37 em up) sits on the text's x-height middle. ◦ and – stay
     run: bullet && level % 3 === 0 ? { color: PINK_DEEP, size: 30, position: -6 } : { color: PINK_DEEP },
