@@ -269,6 +269,8 @@ cognizone-convert document.md --format docx      # → document.docx
 cognizone-convert document.md output.pdf         # custom output path
 cognizone-convert document.md -b classic         # old brand
 cognizone-convert document.md --no-external-links  # non-#anchor links → plain text (stripped in parse.js, all formats)
+cognizone-convert document.md --relative-links     # relative .md links → converted sibling (.docx/.html; PDF gets absolute file://)
+cognizone-convert specs/a.md --link-base <url>      # same, absolute: <url> is the web address of the cwd (SharePoint AllItems.aspx?id= accepted)
 
 # Folder merge (PDF or HTML)
 cognizone-convert docs/                          # → docs.pdf in CWD

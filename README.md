@@ -110,6 +110,8 @@ The 2026 Cognizone brand (plum / cream, Calistoga titles) is the default. The ol
 ```bash
 cognizone-convert document.md -b classic             # old brand, any format
 cognizone-convert document.md -f docx --no-external-links  # links to other files/sites as plain text; #heading links kept
+cognizone-convert document.md -f docx --relative-links     # ../x/y.md#s links → ../x/y.docx (same folder layout; #section dropped)
+cognizone-convert specs/a.md -f docx --link-base "<SharePoint folder URL>"  # same, but absolute links (Word for the web); URL = folder you run from
 ```
 
 Or set `brand: classic` in a document's frontmatter (the `-b` / `--brand` flag wins over it). For a folder merge without `--brand`, the first document's `brand:` decides for the whole folder.

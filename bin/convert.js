@@ -12,6 +12,8 @@ const args = process.argv.slice(2);
 let format = 'pdf';
 let brandArg;
 let stripExternalLinks = false;
+let relativeLinks = false;
+let linkBase;
 let inputArg, outputArg;
 
 for (let i = 0; i < args.length; i++) {
@@ -21,6 +23,11 @@ for (let i = 0; i < args.length; i++) {
     brandArg = args[++i].toLowerCase();
   } else if (args[i] === '--no-external-links') {
     stripExternalLinks = true;
+  } else if (args[i] === '--relative-links') {
+    relativeLinks = true;
+  } else if (args[i] === '--link-base' && args[i + 1]) {
+    linkBase = args[++i];
+    relativeLinks = true;
   } else if (!inputArg) {
     inputArg = args[i];
   } else if (!outputArg) {
@@ -29,7 +36,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!inputArg) {
-  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand 2026|classic] [--no-external-links]');
+  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand 2026|classic] [--no-external-links] [--relative-links] [--link-base <url>]');
   process.exit(1);
 }
 
@@ -37,6 +44,23 @@ if (!['pdf', 'docx', 'html'].includes(format)) {
   console.error(`Unknown format: ${format}. Supported: pdf, docx, html`);
   process.exit(1);
 }
+
+// --link-base takes the folder's web address. A SharePoint address bar shows the library
+// view (".../Forms/AllItems.aspx?id=/sites/x/Shared Documents/specs&viewid=..."): the
+// folder path is in its id parameter.
+function folderUrl(input) {
+  let u;
+  try { u = new URL(input); } catch {
+    console.error(`--link-base: not a URL: ${input}`);
+    process.exit(1);
+  }
+  const id = u.searchParams.get('id');
+  if (id) return new URL(id.replace(/\/?$/, '/'), u.origin).href;
+  u.search = ''; u.hash = '';
+  u.pathname = u.pathname.replace(/\/Forms\/[^/]+\.aspx$/i, '').replace(/\/?$/, '/');
+  return u.href;
+}
+if (linkBase) linkBase = folderUrl(linkBase);
 
 // ponytail: two brands only while the classic one is phased out — delete the
 // classic renderers and this switch when it goes
@@ -86,6 +110,7 @@ async function main() {
       process.exit(1);
     }
 
+    if (relativeLinks) console.warn('--relative-links / --link-base are ignored for folder merges (one output file).');
     const mdFiles = findMarkdownFiles(inputPath);
     if (!mdFiles.length) {
       console.error(`No .md files found in ${inputPath}`);
@@ -93,7 +118,7 @@ async function main() {
     }
 
     console.log(`Found ${mdFiles.length} markdown file(s) in ${path.basename(inputPath)}/`);
-    const parsedDocs = mdFiles.map(f => parseMarkdown(f, { stripExternalLinks }));
+    const parsedDocs = mdFiles.map(f => parseMarkdown(f, { stripExternal: stripExternalLinks }));
 
     const folderName = path.basename(inputPath);
     const ext = format === 'html' ? '.html' : '.pdf';
@@ -111,7 +136,10 @@ async function main() {
   } else {
     const ext = format === 'docx' ? '.docx' : format === 'html' ? '.html' : '.pdf';
     const outputFile = path.resolve(outputArg || inputPath.replace(/\.md$/, ext));
-    const parsed = parseMarkdown(inputPath, { stripExternalLinks });
+    // ponytail: Chrome resolves relative hrefs against the page base when printing, so a PDF
+    // gets absolute file:// links; post-process the PDF annotations if PDF ever needs this
+    if (relativeLinks && !linkBase && format === 'pdf') console.warn('--relative-links: PDF links become absolute file paths on this machine; use docx or html for a delivery.');
+    const parsed = parseMarkdown(inputPath, { stripExternal: stripExternalLinks, docExt: relativeLinks ? ext : '', linkBase, linkRoot: process.cwd() });
     const brand = pickBrand(parsed);
 
     if (format === 'docx') {

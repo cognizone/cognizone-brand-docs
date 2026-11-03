@@ -26,6 +26,15 @@ Options:
                                 old brand, kept for a short transition.
       --no-external-links       Render links to other files or sites as plain
                                 text; in-document #heading links still work.
+      --relative-links          Point relative links to other .md files at their
+                                converted file (a.md#x → a.docx), assuming the
+                                delivery keeps the repo's folder layout. The
+                                #section is dropped. Single files, docx/html.
+      --link-base <url>         Like --relative-links, but links become absolute:
+                                <url> is the web address (e.g. SharePoint folder)
+                                of the folder you run the command from. Needed
+                                for Word for the web, which can't follow
+                                relative links.
   -v, --version                 Print version and exit
   -h, --help                    Show this help message
 
@@ -37,6 +46,8 @@ Examples:
   cognizone-convert document.md -f docx
   cognizone-convert document.md -b classic     # old brand
   cognizone-convert document.md -f docx --no-external-links
+  cognizone-convert document.md -f docx --no-external-links --relative-links
+  cognizone-convert specs/a.md -f docx --link-base "https://x.sharepoint.com/sites/s/Shared Documents/"
   cognizone-convert docs/                      # merge folder → PDF
   cognizone-convert docs/ -f html              # merge folder → HTML
   cognizone-convert docs/ merged-output.pdf

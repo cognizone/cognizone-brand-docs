@@ -185,11 +185,12 @@ function printPdf(html, outputFile, headerTitle, footer, tmpName) {
 }
 
 function renderPdf(parsed, outputFile) {
-  const { title, headerTitle, inputDir, tocEntries, mdNoH1 } = parsed;
+  const { title, headerTitle, inputDir, tocEntries, tokens } = parsed;
 
   // ── Render body HTML with section numbers ──────────────────────────────────
   useRenderer(tocEntries);
-  const bodyHtml = marked(mdNoH1);
+  // render parse.js's tokens, not the raw Markdown: link rewriting happens there
+  const bodyHtml = marked.parser(tokens);
 
   // ── Assemble HTML ──────────────────────────────────────────────────────────
   const cssUrl = pathToFileURL(CSS_PATH).href;
@@ -278,7 +279,7 @@ function renderMergedPdf(parsedDocs, folderPath, outputFile) {
   // a separate break marker before a cover on its own named page would leave
   // a blank page behind.
   const docSections = parsedDocs.map((doc, i) => {
-    const bodyHtml = resolveImagePaths(marked(doc.mdNoH1), doc.inputDir);
+    const bodyHtml = resolveImagePaths(marked.parser(doc.tokens), doc.inputDir);
     const cover = resolveImagePaths(buildCoverHtml(doc, ` id="doc-${i}"`), doc.inputDir);
     return `
   ${cover}

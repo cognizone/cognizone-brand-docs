@@ -599,8 +599,51 @@ try {
   assert('no-external-links docx: no hyperlink rels, #anchor still an internal link',
     !rels.includes('TargetMode="External"') && xml.includes('>cell<')
     && /w:anchor="_toc_\d+"/.test(xml.split('</w:p>').find(p => p.includes('>Para <')) || ''));
+  const pdfOut = path.join(OUT_DIR, 'no-ext-links.pdf');
+  execFileSync(process.execPath, [CONVERT, md, pdfOut, '--format', 'pdf', '--no-external-links'], { stdio: 'pipe' });
+  const pdf = fs.readFileSync(pdfOut).toString('latin1');
+  assert('no-external-links pdf: no external URIs', !/\/URI\s*\((https|file)/.test(pdf));
 } catch (e) {
   assert('no-external-links: plain text links', false, e.stderr?.toString() || e.message);
+}
+
+// --relative-links: a relative link to another .md points at that doc's converted file
+try {
+  const md = path.join(OUT_DIR, 'rel-links.md');
+  fs.writeFileSync(md, '---\ntitle: Relative links\n---\n\n## One\n\n'
+    + 'See [case model](../EVR-10/case-model.md#states), [here](#one), [site](https://example.com) and [data](model.ttl).\n');
+  const docxOut = path.join(OUT_DIR, 'rel-links.docx');
+  execFileSync(process.execPath, [CONVERT, md, docxOut, '--format', 'docx', '--relative-links', '--no-external-links'], { stdio: 'pipe' });
+  const rels = execFileSync('unzip', ['-p', docxOut, 'word/_rels/document.xml.rels']).toString();
+  const ext = rels.match(/Target="[^"]*" TargetMode="External"/g) || [];
+  assert('relative-links docx: .md link → sibling .docx, others plain text',
+    ext.length === 1 && ext[0].startsWith('Target="../EVR-10/case-model.docx"'), ext.join(' '));
+  const htmlOut = path.join(OUT_DIR, 'rel-links.html');
+  execFileSync(process.execPath, [CONVERT, md, htmlOut, '--format', 'html', '--relative-links'], { stdio: 'pipe' });
+  const html = fs.readFileSync(htmlOut, 'utf8');
+  assert('relative-links html: .md link → .html, other links untouched without --no-external-links',
+    html.includes('href="../EVR-10/case-model.html"') && html.includes('href="https://example.com"')
+    && html.includes('href="model.ttl"') && html.includes('href="#one"'));
+} catch (e) {
+  assert('relative-links: rewrite to converted files', false, e.stderr?.toString() || e.message);
+}
+
+// --link-base: links become absolute, rooted at the cwd; a SharePoint library-view
+// address ("AllItems.aspx?id=<folder path>") resolves to the folder itself
+try {
+  const dir = path.join(OUT_DIR, 'link-base', 'specs', 'EVR-13');
+  fs.mkdirSync(dir, { recursive: true });
+  const md = path.join(dir, 'search.md');
+  fs.writeFileSync(md, '---\ntitle: Link base\n---\n\n## One\n\nSee [case model](../EVR-10/case%20model.md#states).\n');
+  const out = path.join(dir, 'search.docx');
+  execFileSync(process.execPath, [CONVERT, md, out, '--format', 'docx', '--link-base',
+    'https://x.sharepoint.com/sites/REG/Shared%20Documents/Forms/AllItems.aspx?id=%2Fsites%2FREG%2FShared%20Documents%2Fdelivery&viewid=1'],
+    { cwd: path.join(OUT_DIR, 'link-base'), stdio: 'pipe' });
+  const rels = execFileSync('unzip', ['-p', out, 'word/_rels/document.xml.rels']).toString();
+  assert('link-base docx: absolute SharePoint link (?web=1) from library-view URL',
+    rels.includes('Target="https://x.sharepoint.com/sites/REG/Shared%20Documents/delivery/specs/EVR-10/case%20model.docx?web=1"'));
+} catch (e) {
+  assert('link-base docx: absolute SharePoint link (?web=1) from library-view URL', false, e.stderr?.toString() || e.message);
 }
 
 // Chrome embeds a variable font as Type 3 outlines (no BaseFont), which viewers draw thin;

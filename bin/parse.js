@@ -25,20 +25,48 @@ function rawFrontmatterValue(rawMatter, key) {
   return v;
 }
 
-// Replace each link whose href is not an in-document "#anchor" with its own
-// child tokens: the text (and its formatting) stays, the link goes. Covers
-// https://, mailto: and relative links to docs that are not in the delivery.
-function stripExternalLinks(tokens) {
+// Rewrite links in place. opts.docExt (e.g. ".docx"): a relative link to a
+// .md file points at the converted sibling instead ("../a/b.md#x" -> "../a/b.docx"),
+// assuming the delivery keeps the repo's folder layout.
+// ponytail: the #section is dropped (other docs' bookmarks are numbered, not slugs),
+// so the link opens the other document at its start; slug bookmarks if that matters.
+// opts.stripExternal: every other link that is not an in-document "#anchor" is
+// replaced by its child tokens, so the text (and its formatting) stays.
+// opts.linkBase: web address of opts.linkRoot (the folder the command runs from).
+// The target's path from linkRoot is appended, so the link is absolute: Word for
+// the web turns a relative "../a.docx" into "https://../a.docx".
+function absoluteLink(href, opts) {
+  let p = href;
+  try { p = decodeURI(href); } catch { /* keep as written */ }
+  const rel = path.relative(opts.linkRoot, path.resolve(opts.inputDir, p));
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    console.warn(`--link-base: ${href} is outside ${opts.linkRoot}; left relative.`);
+    return href;
+  }
+  const url = new URL(rel.split(path.sep).map(encodeURIComponent).join('/'), opts.linkBase);
+  // SharePoint downloads a plain file URL; ?web=1 opens it in Word (or the viewer) in the browser
+  if (/\.sharepoint\.com$/i.test(url.hostname)) url.searchParams.set('web', '1');
+  return url.href;
+}
+
+function rewriteLinks(tokens, opts) {
   for (let i = tokens.length - 1; i >= 0; i--) {
     const t = tokens[i];
-    if (t.type === 'link' && !t.href.startsWith('#')) {
-      tokens.splice(i, 1, ...(t.tokens || []));
-      continue;
+    if (t.type === 'link') {
+      const m = opts.docExt && !/^([a-z][a-z0-9+.-]*:|\/|#)/i.test(t.href) && t.href.match(/^([^#?]*)\.md(?:[?#].*)?$/i);
+      if (m) {
+        t.href = opts.linkBase ? absoluteLink(m[1] + opts.docExt, opts) : m[1] + opts.docExt;
+        continue;
+      }
+      if (opts.stripExternal && !t.href.startsWith('#')) {
+        tokens.splice(i, 1, ...(t.tokens || []));
+        continue;
+      }
     }
-    if (t.tokens) stripExternalLinks(t.tokens);
-    for (const item of t.items || []) if (item.tokens) stripExternalLinks(item.tokens);
-    for (const cell of t.header || []) if (cell.tokens) stripExternalLinks(cell.tokens);
-    for (const row of t.rows || []) for (const cell of row) if (cell.tokens) stripExternalLinks(cell.tokens);
+    if (t.tokens) rewriteLinks(t.tokens, opts);
+    for (const item of t.items || []) if (item.tokens) rewriteLinks(item.tokens, opts);
+    for (const cell of t.header || []) if (cell.tokens) rewriteLinks(cell.tokens, opts);
+    for (const row of t.rows || []) for (const cell of row) if (cell.tokens) rewriteLinks(cell.tokens, opts);
   }
 }
 
@@ -69,7 +97,7 @@ function parseMarkdown(inputFile, opts = {}) {
 
   // Lex into token tree
   const tokens = marked.lexer(mdNoH1);
-  if (opts.stripExternalLinks) stripExternalLinks(tokens);
+  if (opts.stripExternal || opts.docExt) rewriteLinks(tokens, { ...opts, inputDir: path.dirname(path.resolve(inputFile)) });
 
   // Walk tokens to compute section numbers + TOC entries
   const sectionCounters = [0, 0, 0, 0, 0, 0];
