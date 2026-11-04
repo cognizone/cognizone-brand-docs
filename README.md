@@ -109,9 +109,6 @@ The 2026 Cognizone brand (plum / cream, Calistoga titles) is the default. The ol
 
 ```bash
 cognizone-convert document.md -b classic             # old brand, any format
-cognizone-convert document.md -f docx --no-external-links  # links to other files/sites as plain text; #heading links kept
-cognizone-convert document.md -f docx --relative-links     # ../x/y.md#s links → ../x/y.docx (same folder layout; #section dropped)
-cognizone-convert specs/a.md -f docx --link-base "<SharePoint folder URL>"  # same, but absolute links (Word for the web); URL = folder you run from
 ```
 
 Or set `brand: classic` in a document's frontmatter (the `-b` / `--brand` flag wins over it). For a folder merge without `--brand`, the first document's `brand:` decides for the whole folder.
@@ -125,6 +122,38 @@ Extra optional frontmatter fields used by the 2026 cover and footer:
 | `classification` | e.g. `Confidential`, shown on the cover and in the footer |
 
 The style spec is [`reference/brand-2026-spec.md`](reference/brand-2026-spec.md); the logo pack is in [`assets/brand-2026/`](assets/brand-2026/).
+
+## Links in delivered documents
+
+Markdown in a repo links to GitHub, to other docs by relative path, and to headings in the same doc. A Word or PDF file handed to a client can't follow most of those, so three options control what happens to links. By default every link is kept as written.
+
+| Option | Effect |
+|---|---|
+| `--no-external-links` | Links to sites and other files become plain text (the text and its formatting stay). `#heading` links in the same document still work. |
+| `--relative-links` | A relative link to another `.md` points at that doc's converted file: `../EVR-10/case-model.md#states` → `../EVR-10/case-model.docx`. |
+| `--link-base <url>` | As `--relative-links`, but the link is a full web address: `<url>` + the target's path from the folder you run the command from. |
+
+All three work for PDF, Word and HTML. `--relative-links` and `--link-base` apply to single files only (a folder merge is one file), and they drop the `#section`: the link opens the other doc at its start.
+
+### Word files on SharePoint
+
+Word for the web can't follow relative links (it opens `https://../EVR-10/case-model.docx`), so use `--link-base` for a SharePoint delivery:
+
+1. Link docs to each other with **relative paths** in the Markdown, not GitHub URLs. GitHub URLs are not rewritten; with `--no-external-links` they become plain text.
+2. Upload the Word files with the **same folder layout** as the repo.
+3. Run each conversion from the folder that maps to the SharePoint folder, passing that SharePoint folder's address:
+
+```bash
+cognizone-convert specs/EVR-13/EVR-13-search.md -f docx --no-external-links \
+  --link-base "https://<tenant>.sharepoint.com/sites/<site>/<library>/Forms/AllItems.aspx?id=..."
+```
+
+- Paste the address straight from the browser's address bar while viewing the folder; the `AllItems.aspx?id=…` form is understood. A short "Copy link" sharing address (`/:f:/s/…`) has no folder path in it and does not work.
+- SharePoint links get `?web=1`, so the file opens in Word for the web instead of downloading.
+- A link to a doc outside the folder you run from can't be made absolute: with `--no-external-links` it becomes plain text, otherwise it stays relative (with a warning).
+- A link to a doc you don't upload is broken, and moving or renaming the SharePoint folder means rebuilding with the new address.
+
+`--relative-links` only suits HTML, or Word files opened from a OneDrive-synced folder; in a PDF, Chrome turns relative links into absolute paths on the machine that made it.
 
 ## Sizing mermaid diagrams
 

@@ -55,6 +55,10 @@ The tool itself must work on macOS, Windows and Linux: no shell scripts, spawn N
 
 The path sections below name the classic files; the `-2026` copies follow the same structure, with the differences listed under "Brands".
 
+### Link options (`rewriteLinks()` in `parse.js`)
+
+`--no-external-links`, `--relative-links` and `--link-base` rewrite link tokens in place after lexing, so every renderer gets them; renderers must render `parsed.tokens`, never re-lex `mdNoH1` (the 2026 PDF renderer did, and missed the rewrite). Relative `.md` links become the converted sibling (`#section` dropped); with `--link-base` they become `<url>` + their path from the cwd, plus `?web=1` on `*.sharepoint.com` (SharePoint downloads a bare file URL). `convert.js` `folderUrl()` turns a SharePoint `AllItems.aspx?id=` address into the folder URL. Out-of-cwd links: plain text with `--no-external-links`, else left relative. User docs: README "Links in delivered documents".
+
 ### Folder merge path (PDF and HTML)
 
 When the input is a directory, `convert.js` recursively finds all `.md` files (sorted alphabetically), parses each one, and calls `renderMergedPdf()` in `render-pdf.js` (or `renderMergedHtml()` in `render-html.js` when `--format html`). This produces a single file:
