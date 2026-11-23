@@ -700,6 +700,13 @@ try {
     bookmark && xml.includes(`PAGEREF ${bookmark} \\h`), bookmark);
   assert('2026 docx: code fence first in a list item renders as a code block',
     paraWith('>const fenced = 1;<').includes('Roboto Mono') && !xml.includes('```'));
+  // a block inside a list item starts at the item's text indent and ends at the right margin
+  const tableWith = text => (xml.split('</w:tbl>').find(t => t.includes(text)) || '').split('<w:tbl>').pop();
+  const listed = tableWith('>const fenced = 1;<'), plain = tableWith('>code &amp;lt;i&amp;gt; stays<');
+  assert('2026 docx: code block in a list item is indented to the item text; a top-level one is not',
+    listed.includes('<w:tblInd w:type="dxa" w:w="360"/>') && listed.includes('<w:tblW w:type="dxa" w:w="9277"/>')
+    && plain.includes('<w:tblW') && !plain.includes('<w:tblInd'),
+    (listed.match(/<w:tblW[^>]*>|<w:tblInd[^>]*>/g) || []).join(' '));
   // #19: fenced code verbatim, inline code decoded once, prose entities decoded
   assert('2026 docx: entities: fenced &lt; stays literal, inline code decoded once, prose &amp; shows &',
     xml.includes('>code &amp;lt;i&amp;gt; stays<') && xml.includes('>&amp;lt;b&amp;gt;<')

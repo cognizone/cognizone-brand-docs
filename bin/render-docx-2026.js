@@ -485,8 +485,18 @@ function headingParagraphs(token) {
   return paragraphs;
 }
 
-function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
+// box: where block-level boxes (code, quote, table, image) go. Inside a list item they
+// start at the item's text indent, so they read as part of the item; width is the room
+// between the margins (or inside a quote cell).
+function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map(), box = { indent: 0, width: CONTENT_WIDTH_TWIP }) {
   const elements = [];
+  const boxIndent = box.indent ? { left: box.indent } : undefined;
+  // Full width at the margin (as before); an indented table needs an explicit width,
+  // or it sticks out on the right by its indent
+  const boxWidth = box.width - box.indent;
+  const boxed = box.indent
+    ? { width: { size: boxWidth, type: WidthType.DXA }, indent: { size: box.indent, type: WidthType.DXA } }
+    : { width: { size: 100, type: WidthType.PERCENTAGE } };
 
   for (const token of tokens) {
     switch (token.type) {
@@ -516,6 +526,7 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
               transformation: { width: Math.round(width * scale), height: Math.round(height * scale) },
             })],
             alignment: DOCX_ALIGN[mermaidOpts.align],
+            indent: boxIndent,
             spacing: { before: 120, after: 120 },
           }));
           break;
@@ -525,11 +536,14 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
         const codeLines = token.text.split('\n');
         const codeBorder = { style: BorderStyle.SINGLE, size: 4, color: RULE };
         elements.push(new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
+          ...boxed,
+          // one column of the full width: without it some viewers collapse the cell
+          columnWidths: box.indent ? [boxWidth] : undefined,
           rows: [
             new TableRow({
               children: [
                 new TableCell({
+                  width: box.indent ? { size: boxWidth, type: WidthType.DXA } : undefined,
                   shading: { fill: CREAM, type: ShadingType.CLEAR },
                   margins: { top: 120, bottom: 120, left: 120, right: 120, marginUnitType: WidthType.DXA },
                   borders: {
@@ -565,20 +579,22 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
         // borders broke up in Word: list items draw the bar at their hanging indent.
         const wasInQuote = _inQuote;
         _inQuote = true;
-        const quoteChildren = tokensToElements(token.tokens || [], listDepth, mermaidImages);
+        // 320 = the cell's left + right padding
+        const quoteChildren = tokensToElements(token.tokens || [], listDepth, mermaidImages, { indent: 0, width: boxWidth - 320 });
         _inQuote = wasInQuote;
         const quoteBar = { style: BorderStyle.SINGLE, size: 24, color: PINK_DEEP };
         elements.push(new Table({
           // Explicit DXA widths: viewers that ignore percentage widths collapse the cell
-          width: { size: CONTENT_WIDTH_TWIP, type: WidthType.DXA },
-          columnWidths: [CONTENT_WIDTH_TWIP],
+          width: { size: boxWidth, type: WidthType.DXA },
+          columnWidths: [boxWidth],
+          indent: box.indent ? { size: box.indent, type: WidthType.DXA } : undefined,
           layout: TableLayoutType.FIXED,
           borders: { top: NO_BORDER, bottom: NO_BORDER, left: quoteBar, right: NO_BORDER, insideHorizontal: NO_BORDER, insideVertical: NO_BORDER },
           rows: [
             new TableRow({
               children: [
                 new TableCell({
-                  width: { size: CONTENT_WIDTH_TWIP, type: WidthType.DXA },
+                  width: { size: boxWidth, type: WidthType.DXA },
                   shading: { fill: SAND, type: ShadingType.CLEAR },
                   // text 8pt from the bar; the last paragraph's space-after is the bottom padding
                   margins: { top: 100, bottom: 0, left: 160, right: 160, marginUnitType: WidthType.DXA },
@@ -597,7 +613,7 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       case 'list': {
         const ref = listRef(token);
         for (const item of token.items) {
-          elements.push(...listItemToElements(item, ref, listDepth, mermaidImages));
+          elements.push(...listItemToElements(item, ref, listDepth, mermaidImages, box.width));
         }
         break;
       }
@@ -636,7 +652,7 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
         );
 
         elements.push(new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
+          ...boxed,
           borders: tableBorders(),
           rows: [
             new TableRow({ tableHeader: true, children: headerCells }),
@@ -662,7 +678,7 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
         // Every <img> tag, side by side in one paragraph; other HTML is skipped
         const imgs = imgTags(token.raw);
         if (imgs.length) {
-          elements.push(new Paragraph({ children: htmlImageRuns(imgs), spacing: { after: 120 } }));
+          elements.push(new Paragraph({ children: htmlImageRuns(imgs), indent: boxIndent, spacing: { after: 120 } }));
         }
         break;
       }
@@ -681,12 +697,13 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
   return elements;
 }
 
-function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
+function listItemToElements(item, ref, depth, mermaidImages = new Map(), width = CONTENT_WIDTH_TWIP) {
   const elements = [];
 
   // First paragraph in the list item gets the numbering. When the item starts with
   // another block (heading, code, quote, ...), the marker stands on its own line and
-  // that block renders normally below it (a heading keeps its contents-page bookmark)
+  // that block renders below it at the item's text indent (a heading keeps its
+  // contents-page bookmark and its own position)
   const first = item.tokens && item.tokens[0];
   const inlineFirst = !first || first.type === 'text' || first.type === 'paragraph';
   const firstParaTokens = inlineFirst && first && first.tokens
@@ -706,7 +723,7 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
       if (sub.type === 'list') {
         const subRef = listRef(sub);
         for (const subItem of sub.items) {
-          elements.push(...listItemToElements(subItem, subRef, depth + 1, mermaidImages));
+          elements.push(...listItemToElements(subItem, subRef, depth + 1, mermaidImages, width));
         }
       } else if (sub.type === 'text' || sub.type === 'paragraph') {
         // Continuation paragraph: align with the item text (matches the numbering level indent)
@@ -716,7 +733,7 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
           spacing: { after: 80, line: BODY_LINE },
         }));
       } else {
-        elements.push(...tokensToElements([sub], depth, mermaidImages));
+        elements.push(...tokensToElements([sub], depth, mermaidImages, { indent: LIST_INDENT * (depth + 1), width }));
       }
     }
   }
