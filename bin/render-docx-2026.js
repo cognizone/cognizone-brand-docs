@@ -43,14 +43,17 @@ const BODY_AFTER = 120; // 6pt
 
 const COVER_ADDRESS = 'Cognizone BV · Avenue Arnaud Fraiteur 15-23, 1050 Ixelles, Belgium · BE 0634.615.174';
 
-// marked.lexer() escapes HTML entities in code token text; unescape for DOCX output.
-function unescapeHtml(s) {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'");
+// Decode the HTML entities a browser would show as characters, in one pass so
+// "&amp;lt;" becomes "&lt;", not "<". Used on prose text (the Markdown source, where
+// "&amp;" shows "&" in HTML) and on inline code / escapes (which marked escapes once).
+// Fenced code text is verbatim and must not be decoded.
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©' };
+function decodeEntities(s) {
+  return s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (m, dec, hex, name) => {
+    const code = dec ? parseInt(dec, 10) : hex ? parseInt(hex, 16) : null;
+    if (code === null) return ENTITIES[name] ?? m;
+    return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : m;
+  });
 }
 
 const SCRIPT_DIR = path.join(__dirname, '..');
@@ -95,6 +98,28 @@ async function renderMermaidToPng(browser, code) {
   return { buffer: pngBuffer, width: Math.round(box.width), height: Math.round(box.height) };
 }
 
+// SVG image → transparent PNG at twice its size (longest side at most 1000px), for Word
+// viewers without SVG support. Loaded as an <img> data URI, so the SVG can neither run
+// scripts nor fetch files. Returns null when the browser cannot decode it.
+async function renderSvgToPng(browser, svg) {
+  const page = await browser.newPage();
+  try {
+    await page.setContent(`<html><body style="margin:0"><img src="data:image/svg+xml;base64,${svg.toString('base64')}"></body></html>`);
+    const size = await page.$eval('img', img => img.decode().then(() => [img.naturalWidth, img.naturalHeight], () => null));
+    if (!size || !size[0] || !size[1]) return null;
+    const [width, height] = size;
+    const scale = Math.min(1, 1000 / Math.max(width, height));
+    const w = Math.max(1, Math.round(width * scale));
+    const h = Math.max(1, Math.round(height * scale));
+    await page.$eval('img', (img, w, h) => { img.style.width = `${w}px`; img.style.height = `${h}px`; }, w, h);
+    await page.setViewport({ width: w, height: h, deviceScaleFactor: 2 });
+    const data = await page.screenshot({ type: 'png', omitBackground: true, clip: { x: 0, y: 0, width: w, height: h } });
+    return { type: 'png', data, width, height };
+  } finally {
+    await page.close();
+  }
+}
+
 function collectMermaidBlocks(tokens) {
   const blocks = [];
   for (const t of tokens) {
@@ -120,18 +145,22 @@ function listLevelStyle(level, bullet = false) {
   };
 }
 
-function orderedListLevels() {
+// `start`: the list's first number (`3.` resumes at 3); docx also writes it as the
+// instance's level-0 startOverride
+function orderedListLevels(start = 1) {
   const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
   return LEVELS.map(level => ({
     level,
     format: level % 3 === 0 ? LevelFormat.DECIMAL : level % 3 === 1 ? LevelFormat.LOWER_LETTER : LevelFormat.LOWER_ROMAN,
     text: `%${level + 1}.`,
     alignment: AlignmentType.LEFT,
+    ...(level === 0 ? { start } : {}),
     style: listLevelStyle(level),
   }));
 }
 
-function buildNumberingConfig(orderedListCount) {
+// orderedListStarts: the start number of each ordered list, in the order rendered
+function buildNumberingConfig(orderedListStarts) {
   // OOXML requires exactly 9 levels (0-8) per numbering definition
   const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
   const bulletChars = ['•', '◦', '–']; // •, ◦, –
@@ -148,36 +177,136 @@ function buildNumberingConfig(orderedListCount) {
     },
   ];
   // Each ordered list gets its own abstract numbering definition so Word restarts from 1
-  const count = Math.max(1, orderedListCount || 1);
-  for (let i = 0; i < count; i++) {
-    config.push({ reference: `ordered-list-${i}`, levels: orderedListLevels() });
-  }
+  const starts = orderedListStarts.length ? orderedListStarts : [1];
+  starts.forEach((start, i) => {
+    config.push({ reference: `ordered-list-${i}`, levels: orderedListLevels(start) });
+  });
   return { config };
-}
-
-function countOrderedLists(tokens) {
-  let count = 0;
-  for (const t of tokens) {
-    if (t.type === 'list' && t.ordered) count++;
-    if (t.items) {
-      for (const item of t.items) {
-        if (item.tokens) count += countOrderedLists(item.tokens);
-      }
-    }
-  }
-  return count;
 }
 
 // ── Inline token → TextRun conversion ────────────────────────────────────────
 let _inputDir = process.cwd();
 
-function detectImageType(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  if (ext === '.jpg' || ext === '.jpeg') return 'jpg';
-  if (ext === '.gif') return 'gif';
-  if (ext === '.bmp') return 'bmp';
-  return 'png';
+// ── Images ───────────────────────────────────────────────────────────────────
+// Type and pixel size from the file's own bytes (never its extension), or null when it
+// is not a PNG, JPEG, GIF or BMP
+function imageInfo(buf) {
+  if (buf.length >= 24 && buf.readUInt32BE(0) === 0x89504E47 && buf.readUInt32BE(4) === 0x0D0A1A0A) {
+    return { type: 'png', width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
+  }
+  if (buf.length >= 10 && /^GIF8[79]a$/.test(buf.toString('latin1', 0, 6))) {
+    return { type: 'gif', width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
+  }
+  if (buf.length >= 30 && buf.toString('latin1', 0, 2) === 'BM'
+      && [40, 52, 56, 108, 124].includes(buf.readUInt32LE(14)) && buf.readUInt16LE(26) === 1) {
+    return { type: 'bmp', width: buf.readInt32LE(18), height: Math.abs(buf.readInt32LE(22)) };
+  }
+  if (buf.length >= 4 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) {
+    // Walk the marker segments to the start-of-frame (C0-CF, except DHT C4, JPG C8, DAC CC)
+    for (let i = 2; i + 9 < buf.length;) {
+      if (buf[i] !== 0xFF) return null;
+      const m = buf[i + 1];
+      if (m === 0xFF) { i++; continue; } // fill byte
+      if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+        return { type: 'jpg', width: buf.readUInt16BE(i + 7), height: buf.readUInt16BE(i + 5) };
+      }
+      i += m === 0x01 || (m >= 0xD0 && m <= 0xD8) ? 2 : 2 + buf.readUInt16BE(i + 2);
+    }
+  }
+  return null;
 }
+
+const isSvg = (file, buf) => {
+  const text = buf.toString('utf8').replace(/^﻿/, '').trimStart();
+  return (path.extname(file).toLowerCase() === '.svg' || /^<(\?xml|svg)/i.test(text)) && /<svg[\s>]/i.test(text);
+};
+
+// src (as written, maybe %-encoded) → image file path, or null for a URL or missing file
+function resolveImageSrc(src) {
+  if (!src || src.startsWith('http')) return null;
+  let decoded = src;
+  try { decoded = decodeURIComponent(src); } catch { /* malformed %-escape: use as written */ }
+  return [decoded, src].map(s => path.resolve(_inputDir, s)).find(p => {
+    try { return fs.statSync(p).isFile(); } catch { return false; }
+  }) || null;
+}
+
+// src → { type, data, width, height } for an ImageRun, or null (shown as "[alt]").
+// Only real image bytes are embedded: a path to any other file must not pull it into
+// the document. SVG is kept as { svg } until prepareSvgImages rasterizes it.
+let _images = new Map();
+function loadImage(src) {
+  if (!_images.has(src)) {
+    const file = resolveImageSrc(src);
+    let img = null;
+    if (file) {
+      const data = fs.readFileSync(file);
+      const info = imageInfo(data);
+      if (info && info.width > 0 && info.height > 0) img = { ...info, data };
+      else if (isSvg(file, data)) img = { svg: data };
+      else console.warn(`Warning: ${src} is not a PNG, JPEG, GIF, BMP or SVG image; left out of the Word document`);
+    }
+    _images.set(src, img);
+  }
+  return _images.get(src);
+}
+
+// Every image source in the document: Markdown images and each <img> in raw HTML
+function collectImageSrcs(tokens, out = []) {
+  for (const t of tokens || []) {
+    if (t.type === 'image') out.push(t.href);
+    if (t.type === 'html') out.push(...imgTags(t.raw).map(img => img.src));
+    collectImageSrcs(t.tokens, out);
+    for (const item of t.items || []) collectImageSrcs(item.tokens, out);
+    for (const cell of [...(t.header || []), ...(t.rows || []).flat()]) collectImageSrcs(cell.tokens, out);
+  }
+  return out;
+}
+
+async function prepareSvgImages(browser, srcs) {
+  for (const src of srcs) {
+    const img = _images.get(src);
+    if (!img || !img.svg) continue;
+    const png = await renderSvgToPng(browser, img.svg);
+    if (!png) console.warn(`Warning: ${src} could not be rendered as an SVG image; left out of the Word document`);
+    _images.set(src, png);
+  }
+}
+
+// Each <img> tag in raw HTML: src, alt and any pixel width/height attributes
+function imgTags(html) {
+  const attr = (tag, name) => {
+    const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
+    return m ? decodeEntities(m[1] ?? m[2] ?? m[3]) : undefined;
+  };
+  return (html.match(/<img\b[^>]*>/gi) || []).map(tag => ({
+    src: attr(tag, 'src'),
+    alt: attr(tag, 'alt'),
+    width: parseInt(attr(tag, 'width'), 10) || undefined,
+    height: parseInt(attr(tag, 'height'), 10) || undefined,
+  })).filter(img => img.src);
+}
+
+// Image run scaled to at most 500px wide; a raw <img> with only width or only height
+// gets the other from the image's aspect ratio. Placeholder "[alt]" when not embeddable.
+function imageRun(src, alt, size = {}) {
+  const img = loadImage(src);
+  if (!img || !img.data) return new TextRun({ text: `[${alt || src}]`, color: MUTED });
+  const w = size.width || (size.height ? size.height * img.width / img.height : img.width);
+  const h = size.height || (size.width ? size.width * img.height / img.width : img.height);
+  const scale = Math.min(1, 500 / w);
+  return new ImageRun({
+    type: img.type,
+    data: img.data,
+    transformation: { width: Math.round(w * scale), height: Math.round(h * scale) },
+  });
+}
+
+// The images of a raw HTML fragment side by side, as a browser lays them out
+const htmlImageRuns = imgs => imgs.flatMap((img, i) => [
+  ...(i ? [new TextRun({ text: ' ' })] : []),
+  imageRun(img.src, img.alt, img),
+]);
 
 // Run properties for a text run. With ctx.inherit (headings) font/size/colour are
 // left to the paragraph style.
@@ -208,13 +337,15 @@ function inlineToRuns(tokens, ctx = {}) {
         if (t.tokens) {
           runs.push(...inlineToRuns(t.tokens, ctx));
         } else {
-          runs.push(new TextRun({ text: t.raw || t.text, ...runProps(ctx) }));
+          // The Markdown source: decode entities ("&amp;" → "&") as HTML shows them
+          runs.push(new TextRun({ text: decodeEntities(t.raw || t.text), ...runProps(ctx) }));
         }
         break;
       }
       // Backslash escape (`\~`, `\*`, ...): emit the escaped character, not the raw pair
+      // (marked escapes it: `\&` arrives as "&amp;")
       case 'escape':
-        runs.push(new TextRun({ text: t.text, ...runProps(ctx) }));
+        runs.push(new TextRun({ text: decodeEntities(t.text), ...runProps(ctx) }));
         break;
       case 'strong':
         runs.push(...inlineToRuns(t.tokens, { ...ctx, bold: true }));
@@ -227,8 +358,9 @@ function inlineToRuns(tokens, ctx = {}) {
         break;
       case 'codespan':
         // Inline code: Roboto Mono 8.5pt pink deep on sand
+        // marked escapes inline code once: decode exactly once
         runs.push(new TextRun({
-          text: unescapeHtml(t.text),
+          text: decodeEntities(t.text),
           font: FONT_MONO,
           size: 17,
           color: PINK_DEEP,
@@ -242,7 +374,7 @@ function inlineToRuns(tokens, ctx = {}) {
         // Links: blue, no underline
         const children = t.tokens
           ? inlineToRuns(t.tokens, { ...ctx, color: BLUE })
-          : [new TextRun({ text: t.text, ...runProps({ ...ctx, color: BLUE }) })];
+          : [new TextRun({ text: decodeEntities(t.text), ...runProps({ ...ctx, color: BLUE }) })];
         // "#heading-id" jumps to that heading's bookmark: as an external link Word
         // opens the bare "#id" and lands at the top of the document
         const n = t.href.startsWith('#') && _tocBookmarks.get(t.href.slice(1));
@@ -251,29 +383,21 @@ function inlineToRuns(tokens, ctx = {}) {
           : new ExternalHyperlink({ link: t.href, children }));
         break;
       }
-      case 'image': {
-        const imgPath = t.href.startsWith('http') ? null : path.resolve(_inputDir, t.href);
-        if (imgPath && fs.existsSync(imgPath)) {
-          const imgBuf = fs.readFileSync(imgPath);
-          // Read PNG dimensions from header (offset 16=width, 20=height, 4 bytes BE)
-          const isPng = imgBuf[0] === 137 && imgBuf[1] === 80;
-          const imgW = isPng ? imgBuf.readUInt32BE(16) : 400;
-          const imgH = isPng ? imgBuf.readUInt32BE(20) : 300;
-          // Scale to max 500px wide, preserving aspect ratio
-          const scale = Math.min(1, 500 / imgW);
-          runs.push(new ImageRun({
-            type: detectImageType(imgPath),
-            data: imgBuf,
-            transformation: { width: Math.round(imgW * scale), height: Math.round(imgH * scale) },
-          }));
-        } else {
-          runs.push(new TextRun({ text: `[${t.text || t.href}]`, color: MUTED }));
-        }
+      case 'image':
+        runs.push(imageRun(t.href, decodeEntities(t.text || '')));
         break;
-      }
       case 'br':
         runs.push(new TextRun({ break: 1 }));
         break;
+      // Inline raw HTML: <img> tags become images; other tags print as written (below)
+      case 'html': {
+        const imgs = imgTags(t.raw);
+        if (imgs.length) {
+          runs.push(...htmlImageRuns(imgs));
+          break;
+        }
+      }
+      // falls through
       default:
         // Fallback: raw text
         if (t.raw) {
@@ -286,6 +410,17 @@ function inlineToRuns(tokens, ctx = {}) {
 
 // ── Block token → Paragraph/Table conversion ─────────────────────────────────
 let _orderedListIndex = 0;
+let _orderedListStarts = [];
+
+// Numbering reference for a list. Each ordered list gets its own abstract numbering
+// definition (unique reference), so Word restarts numbering for each separate list, at
+// its own start number. Allocated as lists render, so every rendered list (in quotes,
+// list items, ...) has a definition: buildNumberingConfig runs after the body.
+function listRef(token) {
+  if (!token.ordered) return 'bullet-list';
+  _orderedListStarts.push(Number.isInteger(token.start) ? token.start : 1);
+  return `ordered-list-${_orderedListIndex++}`;
+}
 
 // Set while rendering a blockquote's children so every run inside it (including
 // list items) gets the quote text style; the bar and fill come from the quote's table
@@ -394,8 +529,8 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
           break;
         }
         // Code block as single-cell table: cream fill, 0.5pt rule border, 3pt plum
-        // left border, 6pt padding
-        const codeLines = unescapeHtml(token.text).split('\n');
+        // left border, 6pt padding. The text is verbatim (marked does not escape fenced code)
+        const codeLines = token.text.split('\n');
         const codeBorder = { style: BorderStyle.SINGLE, size: 4, color: RULE };
         elements.push(new Table({
           width: { size: 100, type: WidthType.PERCENTAGE },
@@ -468,9 +603,7 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
       }
 
       case 'list': {
-        // Each ordered list gets its own abstract numbering definition (unique reference)
-        // so Word restarts numbering from 1 for each separate list
-        const ref = token.ordered ? `ordered-list-${_orderedListIndex++}` : 'bullet-list';
+        const ref = listRef(token);
         for (const item of token.items) {
           elements.push(...listItemToElements(item, ref, listDepth, mermaidImages));
         }
@@ -534,28 +667,10 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
         break;
 
       case 'html': {
-        // Handle <img> tags; skip other HTML
-        const imgMatch = token.raw.match(/<img\s[^>]*src=["']([^"']+)["'][^>]*>/i);
-        if (imgMatch) {
-          const src = imgMatch[1];
-          const wMatch = token.raw.match(/width=["']?(\d+)["']?/i);
-          const hMatch = token.raw.match(/height=["']?(\d+)["']?/i);
-          const imgPath = src.startsWith('http') ? null : path.resolve(_inputDir, src);
-          if (imgPath && fs.existsSync(imgPath)) {
-            const imgBuf = fs.readFileSync(imgPath);
-            const isPng = imgBuf[0] === 137 && imgBuf[1] === 80;
-            let imgW = wMatch ? parseInt(wMatch[1], 10) : isPng ? imgBuf.readUInt32BE(16) : 400;
-            let imgH = hMatch ? parseInt(hMatch[1], 10) : isPng ? imgBuf.readUInt32BE(20) : 300;
-            const scale = Math.min(1, 500 / imgW);
-            elements.push(new Paragraph({
-              children: [new ImageRun({
-                type: detectImageType(imgPath),
-                data: imgBuf,
-                transformation: { width: Math.round(imgW * scale), height: Math.round(imgH * scale) },
-              })],
-              spacing: { after: 120 },
-            }));
-          }
+        // Every <img> tag, side by side in one paragraph; other HTML is skipped
+        const imgs = imgTags(token.raw);
+        if (imgs.length) {
+          elements.push(new Paragraph({ children: htmlImageRuns(imgs), spacing: { after: 120 } }));
         }
         break;
       }
@@ -577,23 +692,27 @@ function tokensToElements(tokens, listDepth = 0, mermaidImages = new Map()) {
 function listItemToElements(item, ref, depth, mermaidImages = new Map()) {
   const elements = [];
 
-  // First paragraph in the list item gets the numbering
-  const firstParaTokens = item.tokens && item.tokens[0] && item.tokens[0].tokens
-    ? item.tokens[0].tokens
+  // First paragraph in the list item gets the numbering. When the item starts with
+  // another block (heading, code, quote, ...), the marker stands on its own line and
+  // that block renders normally below it (a heading keeps its contents-page bookmark)
+  const first = item.tokens && item.tokens[0];
+  const inlineFirst = !first || first.type === 'text' || first.type === 'paragraph';
+  const firstParaTokens = inlineFirst && first && first.tokens
+    ? first.tokens
     : [{ type: 'text', raw: item.text || '' }];
 
   elements.push(new Paragraph({
-    children: inlineToRuns(firstParaTokens, quoteRun()),
+    children: inlineFirst ? inlineToRuns(firstParaTokens, quoteRun()) : [],
     numbering: { reference: ref, level: depth },
     spacing: { after: 80, line: BODY_LINE },
   }));
 
-  // Handle remaining tokens (nested lists, extra paragraphs)
-  if (item.tokens && item.tokens.length > 1) {
-    for (let i = 1; i < item.tokens.length; i++) {
+  // Handle remaining tokens (nested lists, extra paragraphs, other blocks)
+  if (item.tokens) {
+    for (let i = inlineFirst ? 1 : 0; i < item.tokens.length; i++) {
       const sub = item.tokens[i];
       if (sub.type === 'list') {
-        const subRef = sub.ordered ? `ordered-list-${_orderedListIndex++}` : 'bullet-list';
+        const subRef = listRef(sub);
         for (const subItem of sub.items) {
           elements.push(...listItemToElements(subItem, subRef, depth + 1, mermaidImages));
         }
@@ -971,6 +1090,8 @@ async function renderDocx(parsed, outputFile) {
   const { headerTitle, inputDir, tokens, tocEntries, classification, client, project } = parsed;
   _inputDir = inputDir || process.cwd();
   _orderedListIndex = 0;
+  _orderedListStarts = [];
+  _images = new Map();
   _tocBookmarks = new Map(tocEntries.map((e, i) => [e.id, i + 1]));
 
   // Footer: {classification} · {client} · {project}, only the parts present
@@ -1011,17 +1132,23 @@ async function renderDocx(parsed, outputFile) {
     ],
   };
 
-  // Pre-render mermaid diagrams to PNG
+  // Pre-render mermaid diagrams and SVG images to PNG, in one browser session (none
+  // is launched when the document has neither)
   const mermaidImages = new Map();
   const mermaidCodes = collectMermaidBlocks(tokens);
-  if (mermaidCodes.length > 0) {
+  const svgSrcs = collectImageSrcs(tokens).filter(src => loadImage(src)?.svg);
+  if (mermaidCodes.length > 0 || svgSrcs.length > 0) {
     const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
-    for (const code of mermaidCodes) {
-      if (!mermaidImages.has(code)) {
-        mermaidImages.set(code, await renderMermaidToPng(browser, code));
+    try {
+      for (const code of mermaidCodes) {
+        if (!mermaidImages.has(code)) {
+          mermaidImages.set(code, await renderMermaidToPng(browser, code));
+        }
       }
+      await prepareSvgImages(browser, svgSrcs);
+    } finally {
+      await browser.close();
     }
-    await browser.close();
   }
 
   // Body section
@@ -1038,7 +1165,8 @@ async function renderDocx(parsed, outputFile) {
 
   const doc = new Document({
     styles: buildStyles(),
-    numbering: buildNumberingConfig(countOrderedLists(tokens)),
+    // After the body: the ordered lists were numbered as they rendered
+    numbering: buildNumberingConfig(_orderedListStarts),
     sections: [coverSection, tocSection, bodySection],
   });
 

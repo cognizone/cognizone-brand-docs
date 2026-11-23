@@ -160,26 +160,45 @@ try {
 // ── Test DOCX mermaid sizing + alignment ─────────────────────────────────────
 // fixture.md has two default-sized mermaid blocks (500px cap, centered) and
 // one sized block: ```mermaid maxWidth=200 align=left```.
+
+// Body drawings of a .docx: the paragraph each sits in, its extent (EMU, 1 px = 9525),
+// its media path and the picture's bytes
+function docxDrawings(file) {
+  const read = p => execFileSync('unzip', ['-p', file, p]);
+  const xml = read('word/document.xml').toString();
+  const rels = read('word/_rels/document.xml.rels').toString();
+  const out = [];
+  for (const chunk of xml.split('</w:p>')) {
+    const para = chunk.slice(Math.max(chunk.lastIndexOf('<w:p>'), chunk.lastIndexOf('<w:p ')));
+    for (const d of para.match(/<w:drawing>[\s\S]*?<\/w:drawing>/g) || []) {
+      const [, cx, cy] = d.match(/<wp:extent cx="(\d+)" cy="(\d+)"/);
+      const rId = d.match(/r:embed="([^"]+)"/)[1];
+      const target = rels.match(new RegExp(`Id="${rId}"[^>]*Target="([^"]+)"`))[1];
+      out.push({ para, cx: +cx, cy: +cy, target, media: read(`word/${target}`) });
+    }
+  }
+  return out;
+}
+// The drawings that show a mermaid diagram: every picture except the static images
+// (sample image, logos), which would otherwise satisfy extent checks on their own
+const STATIC_IMAGES = ['sample-image.png', '../templates/logo.png', '../templates/2026/icon.png']
+  .map(f => fs.readFileSync(path.join(__dirname, f)));
+const mermaidDrawings = file => docxDrawings(file).filter(d => !STATIC_IMAGES.some(s => s.equals(d.media)));
+const FIXTURE_MERMAIDS = (fs.readFileSync(FIXTURE, 'utf8').match(/^```mermaid/gm) || []).length;
+
 try {
-  const docXml = execFileSync('unzip', ['-p', docxOut, 'word/document.xml']).toString();
-  // EMU: 1 px ≈ 9525; 200 px → 1905000 EMU. Sized diagram must have cx ≤ that.
-  const extents = [...docXml.matchAll(/<wp:extent\s+cx="(\d+)"\s+cy="(\d+)"\s*\/>/g)]
-    .map(m => parseInt(m[1], 10));
-  assert('docx mermaid: >=3 extents found',
-    extents.length >= 3,
-    `found ${extents.length} extents`);
-  const MAX_EMU_200 = 200 * 9525;
-  const sizedExtents = extents.filter(cx => cx <= MAX_EMU_200);
+  const mermaid = mermaidDrawings(docxOut);
+  assert('docx mermaid: one drawing per mermaid diagram',
+    FIXTURE_MERMAIDS === 3 && mermaid.length === FIXTURE_MERMAIDS,
+    `found ${mermaid.length} mermaid drawings for ${FIXTURE_MERMAIDS} diagrams`);
+  // The maxWidth=200 align=left diagram: the only mermaid drawing in a left-justified paragraph
+  const left = mermaid.filter(d => d.para.includes('<w:jc w:val="left"/>'));
   assert('docx mermaid: sized diagram respects maxWidth=200',
-    sizedExtents.length >= 1,
-    `extents (EMU): [${extents.join(', ')}] — none ≤ ${MAX_EMU_200}`);
-  // Alignment: the left-aligned diagram produces a paragraph with w:jc w:val="left"
-  // near the drawing. Crude-but-reliable check: does the doc contain both "w:val=\"left\""
-  // and "w:drawing" AND does the left-jc appear before some drawing element?
-  const leftJcBeforeDrawing = /<w:jc\s+w:val="left"\s*\/>[\s\S]*?<w:drawing>/.test(docXml);
+    left.length === 1 && left[0].cx <= 200 * 9525,
+    `left-aligned mermaid extents (EMU): [${left.map(d => d.cx).join(', ')}]`);
   assert('docx mermaid: align=left produces left-justified paragraph',
-    leftJcBeforeDrawing,
-    'no "<w:jc w:val=\\"left\\"/>" found before a <w:drawing>');
+    left.length === 1 && mermaid.filter(d => d.para.includes('<w:jc w:val="center"/>')).length === FIXTURE_MERMAIDS - 1,
+    `${left.length} left-aligned mermaid drawings`);
 } catch (e) {
   assert('docx mermaid: extent/alignment checks', false, e.stderr?.toString() || e.message);
 }
@@ -219,22 +238,35 @@ fs.writeFileSync(multiListMd, [
   '',
 ].join('\n'));
 
+// The numbering of the list item paragraph containing `text`: its numId, that
+// instance's abstractNumId, and the level-0 start number (abstract start, instance override)
+function listNumbering(docXml, numXml, text) {
+  const para = docXml.split('</w:p>').find(p => p.includes(`>${text}<`)) || '';
+  const numId = (para.match(/<w:numId w:val="([^"]+)"\/>/) || [])[1];
+  const num = (numXml.match(new RegExp(`<w:num w:numId="${numId}">[\\s\\S]*?</w:num>`)) || [''])[0];
+  const abstractNumId = (num.match(/<w:abstractNumId w:val="(\d+)"\/>/) || [])[1];
+  const abs = (numXml.match(new RegExp(`<w:abstractNum [^>]*w:abstractNumId="${abstractNumId}"[\\s\\S]*?</w:abstractNum>`)) || [''])[0];
+  return {
+    numId, abstractNumId,
+    start: (abs.match(/<w:start w:val="(\d+)"\/>/) || [])[1],
+    startOverride: (num.match(/<w:lvlOverride w:ilvl="0"><w:startOverride w:val="(\d+)"\/>/) || [])[1],
+  };
+}
+
 const multiListOut = path.join(OUT_DIR, 'multi-list.docx');
 try {
   execFileSync(process.execPath, [CONVERT, multiListMd, multiListOut, '--format', 'docx', '--brand', 'classic'], { stdio: 'pipe' });
-  // DOCX is a ZIP — extract word/numbering.xml and verify each ordered list
-  // gets its own abstractNumId (not just different numId — Word ignores
-  // startOverride when multiple w:num share the same abstractNumId)
+  // DOCX is a ZIP — the two lists' paragraphs must use different numIds, each on its
+  // own abstractNumId (Word ignores startOverride when multiple w:num share the same
+  // abstractNumId)
+  const docXml = execFileSync('unzip', ['-p', multiListOut, 'word/document.xml']).toString();
   const numXml = execFileSync('unzip', ['-p', multiListOut, 'word/numbering.xml']).toString();
-  // Find all <w:num> entries and their abstractNumId references
-  const numEntries = [...numXml.matchAll(/<w:num w:numId="(\d+)"[^>]*>.*?<w:abstractNumId w:val="(\d+)"\/>/gs)];
-  // Filter to non-bullet entries (abstractNumId > 0 for ordered lists based on config order)
-  const abstractIds = numEntries.map(m => parseInt(m[2], 10));
-  // The two ordered lists should reference different abstract definitions
-  const uniqueAbstractIds = [...new Set(abstractIds)];
+  const a = listNumbering(docXml, numXml, 'Alpha');
+  const b = listNumbering(docXml, numXml, 'One');
   assert('docx: separate ordered lists get different abstractNumId',
-    uniqueAbstractIds.length >= 2,
-    `expected >=2 unique abstractNumIds, got ${uniqueAbstractIds.length}: [${uniqueAbstractIds.join(', ')}]`);
+    a.numId && b.numId && a.numId !== b.numId
+    && a.abstractNumId && b.abstractNumId && a.abstractNumId !== b.abstractNumId,
+    `Alpha: ${JSON.stringify(a)}, One: ${JSON.stringify(b)}`);
 } catch (e) {
   assert('docx: separate ordered lists get different numId instances', false,
     e.stderr?.toString() || e.message);
@@ -561,6 +593,125 @@ try {
   assert('2026 html: no external requests', !/(src|href)=["']https?:\/\/(?!cogni\.zone)/.test(html.replace(/<a [^>]*>/g, '')));
 } catch (e) {
   assert('2026 html: content checks', false, e.message);
+}
+
+// ── 2026 Word renderer: mermaid, lists, entities, images ─────────────────────
+// Mermaid checks on the 2026 fixture output above, as for classic
+try {
+  const mermaid = mermaidDrawings(path.join(OUT_DIR, 'brand-2026.docx'));
+  const left = mermaid.filter(d => d.para.includes('<w:jc w:val="left"/>'));
+  assert('2026 docx mermaid: one drawing per diagram; the maxWidth=200 align=left one is left and ≤ 200px',
+    mermaid.length === FIXTURE_MERMAIDS && left.length === 1 && left[0].cx <= 200 * 9525,
+    `${mermaid.length} mermaid drawings, left extents: [${left.map(d => d.cx).join(', ')}]`);
+} catch (e) {
+  assert('2026 docx mermaid: extent/alignment checks', false, e.stderr?.toString() || e.message);
+}
+
+// One document for the Word renderer fixes. Images are built here, no image tools needed:
+// a 1200×240 grey baseline JPEG (one 1-bit Huffman code each for "DC 0" and "end of
+// block", so every 8×8 block is two zero bits) and a GIF with a 40×120 logical screen
+try {
+  const dir = path.join(OUT_DIR, 'word-fixes');
+  fs.mkdirSync(dir);
+  const seg = (marker, body) => Buffer.from([0xFF, marker, (body.length + 2) >> 8, (body.length + 2) & 255, ...body]);
+  const huffman = tableClass => [tableClass, 1, ...Array(15).fill(0), 0];
+  fs.writeFileSync(path.join(dir, 'wide.jpg'), Buffer.concat([
+    Buffer.from([0xFF, 0xD8]),
+    seg(0xDB, [0, ...Array(64).fill(1)]),
+    seg(0xC0, [8, 0, 240, 1200 >> 8, 1200 & 255, 1, 1, 0x11, 0]),
+    seg(0xC4, [...huffman(0x00), ...huffman(0x10)]),
+    seg(0xDA, [1, 1, 0x00, 0, 63, 0]),
+    Buffer.alloc(150 * 30 * 2 / 8),
+    Buffer.from([0xFF, 0xD9]),
+  ]));
+  fs.writeFileSync(path.join(dir, 'tall.gif'),
+    Buffer.from('474946383961280078008000' + '00ffffff000000' + '2c00000000010001000002024401003b', 'hex'));
+  fs.copyFileSync(path.join(__dirname, 'sample-image.png'), path.join(dir, 'pic one.png'));
+  const marker = 'NOT_AN_IMAGE_MARKER_4711';
+  fs.writeFileSync(path.join(dir, 'notes.png'), `plain text ${marker}\n`);
+  fs.writeFileSync(path.join(dir, 'drawing.svg'),
+    '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><rect width="200" height="100" fill="#c85a8a"/></svg>');
+  const md = path.join(dir, 'word-fixes.md');
+  fs.writeFileSync(md, [
+    '---', 'title: Word fixes', '---', '',
+    '## Lists', '',
+    '> 1. Quoted', '',
+    '1. Alpha', '2. Beta', '',
+    'Interrupting paragraph.', '',
+    '3. Gamma', '4. Delta', '',
+    '- ### Listed heading', '',
+    '- ```js', '  const fenced = 1;', '  ```', '',
+    '## Text', '',
+    'Tom &amp; Jerry &copy; and `&lt;b&gt;` stays.', '',
+    '```', 'code &lt;i&gt; stays', '```', '',
+    '## Images', '',
+    '![wide](wide.jpg)', '',
+    '<img src="tall.gif" width="20">', '',
+    '![spaced](pic%20one.png)', '',
+    '<p><img src="pic one.png"> <img src="wide.jpg" height="40"></p>', '',
+    'Inline <img src="tall.gif" height="30"> image.', '',
+    '![text](notes.png)', '',
+    '![vector](drawing.svg)', '',
+  ].join('\n'));
+  const out = path.join(dir, 'word-fixes.docx');
+  execFileSync(process.execPath, [CONVERT, md, out, '--format', 'docx'], { stdio: 'pipe' });
+  const xml = execFileSync('unzip', ['-p', out, 'word/document.xml']).toString();
+  const numXml = execFileSync('unzip', ['-p', out, 'word/numbering.xml']).toString();
+  const paraWith = text => xml.split('</w:p>').find(p => p.includes(text)) || '';
+
+  // #9: a numbered list inside a quote is counted, so later lists get a real numId
+  const numIds = [...xml.matchAll(/<w:numId w:val="([^"]+)"\/>/g)].map(m => m[1]);
+  const defined = new Set([...numXml.matchAll(/<w:num w:numId="(\d+)"/g)].map(m => m[1]));
+  assert('2026 docx: every list numId is defined, also after a numbered list in a quote',
+    numIds.length > 0 && !xml.includes('{ordered-list') && numIds.every(id => /^\d+$/.test(id) && defined.has(id)),
+    `numIds: ${numIds.join(', ')}`);
+  // #20 + restarts: separate lists use separate definitions; "3." resumes at 3
+  const [quoted, alpha, gamma] = ['Quoted', 'Alpha', 'Gamma'].map(t => listNumbering(xml, numXml, t));
+  assert('2026 docx: separate ordered lists use different numIds and abstractNumIds, starting at 1',
+    new Set([quoted.numId, alpha.numId, gamma.numId]).size === 3
+    && new Set([quoted.abstractNumId, alpha.abstractNumId, gamma.abstractNumId]).size === 3
+    && quoted.start === '1' && alpha.start === '1' && alpha.startOverride === '1',
+    JSON.stringify({ quoted, alpha }));
+  assert('2026 docx: ordered list keeps its start number (3. resumes at 3)',
+    gamma.start === '3' && gamma.startOverride === '3', JSON.stringify(gamma));
+  // #18: a heading or code fence first in a list item renders as that block
+  const heading = xml.split('</w:p>').find(p => p.includes('>Listed heading<') && !p.includes('PAGEREF')) || '';
+  const bookmark = (heading.match(/<w:bookmarkStart w:name="(_toc_\d+)"/) || [])[1];
+  assert('2026 docx: heading first in a list item keeps the bookmark its contents PAGEREF points to',
+    bookmark && xml.includes(`PAGEREF ${bookmark} \\h`), bookmark);
+  assert('2026 docx: code fence first in a list item renders as a code block',
+    paraWith('>const fenced = 1;<').includes('Roboto Mono') && !xml.includes('```'));
+  // #19: fenced code verbatim, inline code decoded once, prose entities decoded
+  assert('2026 docx: entities: fenced &lt; stays literal, inline code decoded once, prose &amp; shows &',
+    xml.includes('>code &amp;lt;i&amp;gt; stays<') && xml.includes('>&amp;lt;b&amp;gt;<')
+    && xml.includes('>Tom &amp; Jerry © and <'));
+
+  const drawings = docxDrawings(out);
+  const px = d => [d.cx / 9525, d.cy / 9525].join('x');
+  const jpgs = drawings.filter(d => d.target.endsWith('.jpg'));
+  const gifs = drawings.filter(d => d.target.endsWith('.gif'));
+  // #21: real JPEG/GIF dimensions; a width- or height-only <img> keeps the aspect ratio
+  assert('2026 docx: wide JPEG keeps its aspect ratio (1200×240 → 500×100)',
+    jpgs.length === 2 && px(jpgs[0]) === '500x100', jpgs.map(px).join(', '));
+  assert('2026 docx: <img> with only width or only height gets the other proportionally',
+    gifs.length === 2 && jpgs.length === 2 && px(gifs[0]) === '20x60' && px(gifs[1]) === '10x30' && px(jpgs[1]) === '200x40',
+    [...gifs, ...jpgs].map(px).join(', '));
+  // #16: %20 in an image path is decoded (pic%20one.png and <img src="pic one.png">)
+  assert('2026 docx: %-encoded image path found',
+    !xml.includes('[spaced]') && drawings.filter(d => STATIC_IMAGES[0].equals(d.media)).length === 2);
+  // #17: every <img> of an HTML block, and an inline <img>, become pictures
+  assert('2026 docx: two <img> in one HTML block give two pictures',
+    (jpgs[1]?.para.match(/<w:drawing>/g) || []).length === 2);
+  assert('2026 docx: inline <img> becomes a picture, not tag text',
+    (paraWith('>Inline <').match(/<w:drawing>/g) || []).length === 1 && !xml.includes('&lt;img'));
+  // #5: a non-image file referenced as an image is not embedded; SVG embeds as a real PNG
+  const media = execFileSync('unzip', ['-p', out, 'word/media/*']);
+  assert('2026 docx: text file referenced as an image is not embedded',
+    !media.includes(marker) && xml.includes('>[text]<'));
+  assert('2026 docx: SVG is rasterized to PNG, not embedded as SVG bytes',
+    !media.includes('<svg') && drawings.some(d => px(d) === '200x100' && d.media.readUInt32BE(0) === 0x89504E47));
+} catch (e) {
+  assert('2026 docx: Word renderer fixes', false, e.stderr?.toString() || e.message);
 }
 
 // Word: a link to "#heading-id" jumps to that heading, not to an external "#id"
