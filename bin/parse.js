@@ -12,17 +12,52 @@ function slugify(text) {
     .replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-');
 }
 
+// An error the CLI prints as one line (no stack trace)
+const userError = msg => Object.assign(new Error(msg), { userError: true });
+
+// gray-matter evaluates `---javascript` / `---js` frontmatter with eval: refuse it
+const NO_JS = { parse() { throw userError('only YAML frontmatter is supported'); } };
+
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00A0', colon: ':', tab: '\t', newline: '\n' };
+function decodeEntities(s) {
+  return s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (e, dec, hex, name) =>
+    dec ? String.fromCodePoint(Number(dec) || 0xFFFD) : hex ? String.fromCodePoint(parseInt(hex, 16) || 0xFFFD)
+      : ENTITIES[name.toLowerCase()] ?? e);
+}
+
+// Plain text of a heading from its inline tokens: link text without the URL,
+// code spans' text, raw inline HTML tags dropped. marked escapes `&<>"'` in text tokens.
+function inlineText(tokens) {
+  return tokens.map(t => t.tokens ? inlineText(t.tokens) : t.type === 'html' ? '' : decodeEntities(t.text || '')).join('');
+}
+
 // Read a top-level scalar from the raw YAML block, preserving exact formatting
 // (YAML parses `1.0` as the number 1, losing the trailing zero — the raw text retains it).
+// Only a plain one-line scalar (optionally followed by a comment) is trusted; anything
+// else (quoted, block scalar, empty) is left to the YAML parser (null).
 function rawFrontmatterValue(rawMatter, key) {
-  const re = new RegExp(`^${key}:\\s*(.*?)\\s*$`, 'm');
-  const m = String(rawMatter || '').match(re);
-  if (!m) return null;
-  let v = m[1];
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-    v = v.slice(1, -1);
+  const m = String(rawMatter || '').match(new RegExp(`^${key}:[ \\t]*([\\w.+-]+)(?:[ \\t]+#.*|[ \\t]*)$`, 'm'));
+  return m ? m[1] : null;
+}
+
+// Hrefs a browser would run or load as content; checked after the entity decoding
+// and whitespace/control-character removal a browser does
+const isUnsafeHref = href => /^(javascript|vbscript|data):/i.test(decodeEntities(href).replace(/[\u0000-\u0020]/g, ''));
+
+// --no-external-links for raw HTML: drop <a href> tags (keeping their content) unless the
+// href is an "#anchor". Opening and closing tags can sit in separate sibling inline tokens.
+function stripRawLinks(tokens) {
+  const dropped = [];  // one entry per open <a>: true when its tags are removed
+  for (const t of tokens) {
+    if (t.type !== 'html') continue;
+    t.text = t.raw = t.text.replace(/<a\b[^>]*>|<\/a\s*>/gi, tag => {
+      if (tag[1] === '/') return dropped.pop() ? '' : tag;
+      const href = tag.match(/\bhref\s*=\s*["']?([^"'\s>]*)/i);
+      const drop = !!href && !href[1].startsWith('#');
+      dropped.push(drop);
+      return drop ? '' : tag;
+    });
   }
-  return v;
 }
 
 // Rewrite links in place. opts.docExt (e.g. ".docx"): a relative link to a
@@ -35,11 +70,13 @@ function rawFrontmatterValue(rawMatter, key) {
 // opts.linkBase: web address of opts.linkRoot (the folder the command runs from).
 // The target's path from linkRoot is appended, so the link is absolute: Word for
 // the web turns a relative "../a.docx" into "https://../a.docx".
+// opts.anchorPrefix (folder merges): "#x" becomes "#{prefix}x", matching the
+// renderers' prefixed heading ids. javascript:/vbscript:/data: links always become text.
 function absoluteLink(href, opts) {
-  let p = href;
-  try { p = decodeURI(href); } catch { /* keep as written */ }
+  // decode per segment, so "a%23b.md" is the file "a#b.md" (re-encoded once below)
+  const p = href.split('/').map(s => { try { return decodeURIComponent(s); } catch { return s; } }).join('/');
   const rel = path.relative(opts.linkRoot, path.resolve(opts.inputDir, p));
-  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+  if (rel === '..' || rel.startsWith('..' + path.sep) || path.isAbsolute(rel)) {
     // a relative link can't work on SharePoint: plain text when dead links are stripped
     console.warn(`--link-base: ${href} is outside ${opts.linkRoot}; ${opts.stripExternal ? 'plain text' : 'left relative'}.`);
     return opts.stripExternal ? null : href;
@@ -51,6 +88,7 @@ function absoluteLink(href, opts) {
 }
 
 function rewriteLinks(tokens, opts) {
+  if (opts.stripExternal) stripRawLinks(tokens);
   for (let i = tokens.length - 1; i >= 0; i--) {
     const t = tokens[i];
     if (t.type === 'link') {
@@ -60,10 +98,11 @@ function rewriteLinks(tokens, opts) {
         t.href = href;
         continue;
       }
-      if (opts.stripExternal && !t.href.startsWith('#')) {
+      if (isUnsafeHref(t.href) || (opts.stripExternal && !t.href.startsWith('#'))) {
         tokens.splice(i, 1, ...(t.tokens || []));
         continue;
       }
+      if (opts.anchorPrefix && t.href.length > 1 && t.href.startsWith('#')) t.href = `#${opts.anchorPrefix}${t.href.slice(1)}`;
     }
     if (t.tokens) rewriteLinks(t.tokens, opts);
     for (const item of t.items || []) if (item.tokens) rewriteLinks(item.tokens, opts);
@@ -73,11 +112,16 @@ function rewriteLinks(tokens, opts) {
 }
 
 function parseMarkdown(inputFile, opts = {}) {
-  const parsedMatter = matter(fs.readFileSync(inputFile, 'utf8'));
+  let parsedMatter;
+  try {
+    parsedMatter = matter(fs.readFileSync(inputFile, 'utf8'), { engines: { javascript: NO_JS, js: NO_JS } });
+  } catch (e) {
+    throw userError(`Frontmatter of ${inputFile}: ${e.message}`);
+  }
   const { data: fm, content: mdBody } = parsedMatter;
   const rawMatter = parsedMatter.matter;
 
-  const title       = String(fm.title  || path.basename(inputFile, '.md'));
+  const title       = String(fm.title  || path.parse(inputFile).name);
   const id          = String(fm.id     || '');
   const type        = String(fm.type   || '');
   const status      = String(fm.status || '');
@@ -94,12 +138,15 @@ function parseMarkdown(inputFile, opts = {}) {
   const headerTitle = id ? `${id} - ${title}` : title;
   const footerTitle = [client, project].filter(Boolean).join(' \u00B7 ');
 
-  // Strip H1
-  const mdNoH1 = mdBody.replace(/^#\s[^\n]*\n?/m, '');
-
-  // Lex into token tree
-  const tokens = marked.lexer(mdNoH1);
-  if (opts.stripExternal || opts.docExt) rewriteLinks(tokens, { ...opts, inputDir: path.dirname(path.resolve(inputFile)) });
+  // Lex into token tree; strip the title H1 (cover page only), but only when it is
+  // the first block: a "# comment" in a code fence or a later H1 stays.
+  const tokens = marked.lexer(mdBody);
+  let mdNoH1 = mdBody;  // body text without the title H1 (the classic PDF renderer re-lexes it)
+  const first = tokens.findIndex(t => t.type !== 'space');
+  if (first !== -1 && tokens[first].type === 'heading' && tokens[first].depth === 1) {
+    mdNoH1 = mdBody.replace(tokens.splice(first, 1)[0].raw, () => '');
+  }
+  rewriteLinks(tokens, { ...opts, inputDir: path.dirname(path.resolve(inputFile)) });
 
   // Walk tokens to compute section numbers + TOC entries
   const sectionCounters = [0, 0, 0, 0, 0, 0];
@@ -108,8 +155,9 @@ function parseMarkdown(inputFile, opts = {}) {
   // share a heading like "Required fields"; without disambiguation every TOC
   // link to that text resolves to the first match (since both target IDs and
   // getElementById hit the first occurrence), and TOC page numbers for later
-  // duplicates point to the first one's page.
-  const slugCount = new Map();
+  // duplicates point to the first one's page. Suffixes are checked against every
+  // id issued so far, so "Foo", "Foo", "Foo-2" give foo, foo-2, foo-2-2.
+  const usedIds = new Set();
 
   function walkHeadings(tokenList) {
     for (const token of tokenList) {
@@ -119,11 +167,13 @@ function parseMarkdown(inputFile, opts = {}) {
         for (let i = idx + 1; i < sectionCounters.length; i++) sectionCounters[i] = 0;
 
         const number = sectionCounters.slice(1, idx + 1).join('.');
-        const plain = token.text.replace(/[*_`[\]()]/g, '').trim();
-        const baseSlug = slugify(plain);
-        const seen = slugCount.get(baseSlug) || 0;
-        slugCount.set(baseSlug, seen + 1);
-        const hId = seen === 0 ? baseSlug : `${baseSlug}-${seen + 1}`;
+        const plain = inlineText(token.tokens || []).trim();
+        // "_" is removed before slugifying, as the old punctuation-stripping did, so
+        // existing anchors (e.g. "snake_case" → #snakecase) keep working
+        const baseSlug = slugify(plain.replace(/_/g, '')) || 'section';
+        let hId = baseSlug;
+        for (let n = 2; usedIds.has(hId); n++) hId = `${baseSlug}-${n}`;
+        usedIds.add(hId);
 
         // Attach to token for renderer use
         token._number = number;

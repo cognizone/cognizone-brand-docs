@@ -719,6 +719,154 @@ try {
   assert('edge: unknown brand rejected', true);
 }
 
+// ── Parse and CLI review findings ────────────────────────────────────────────
+{
+  const dir = path.join(OUT_DIR, 'review-a');
+  fs.mkdirSync(dir);
+  const write = (name, text) => { const f = path.join(dir, name); fs.writeFileSync(f, text); return f; };
+  const run = (argv, opts = {}) => {
+    try {
+      const stdout = execFileSync(process.execPath, [CONVERT, ...argv], { stdio: 'pipe', ...opts }).toString();
+      return { status: 0, stdout, stderr: '' };
+    } catch (e) {
+      return { status: e.status, stdout: e.stdout?.toString() || '', stderr: e.stderr?.toString() || '' };
+    }
+  };
+  const noStack = s => !/\n\s+at /.test(s);
+
+  // H1 stripping works on tokens: only a leading H1 goes, code and later H1s stay
+  {
+    const p = parseMarkdown(write('no-h1.md', '---\ntitle: T\n---\n\n## Setup\n\n```bash\n# keep me\n```\n'));
+    assert('review: "# line" in a code fence survives without a leading H1',
+      p.mdNoH1.includes('# keep me') && p.tokens.some(t => t.type === 'code' && t.text.includes('# keep me')));
+    const q = parseMarkdown(write('two-h1.md', '# Title\n\n## A\n\n# Part Two\n\n## B\n'));
+    assert('review: leading H1 stripped, later H1 kept',
+      !q.mdNoH1.includes('# Title') && q.mdNoH1.includes('# Part Two') && q.tocEntries.map(e => e.text).join('|') === 'A|Part Two|B');
+  }
+
+  // JavaScript frontmatter is refused, not evaluated
+  {
+    const md = write('js-fm.md', '---javascript\n({title: "EVALUATED" + 1})\n---\n\n## A\n');
+    const r = run([md, path.join(dir, 'js-fm.html')]);
+    assert('review: ---javascript frontmatter refused with a one-line error',
+      r.status === 1 && r.stderr.includes('only YAML frontmatter is supported') && noStack(r.stderr)
+      && !fs.existsSync(path.join(dir, 'js-fm.html')), r.stderr);
+  }
+
+  // The default output name never equals the input; an explicit same-file output is refused
+  {
+    const src = '---\ntitle: Up\n---\n\n## A\n\nText.\n';
+    const upper = write('UPPER.MD', src);
+    const r = run([upper, '-f', 'html']);
+    assert('review: INPUT.MD -f html writes INPUT.html, input untouched',
+      r.status === 0 && fs.readFileSync(upper, 'utf8') === src && fs.existsSync(path.join(dir, 'UPPER.html')), r.stderr);
+    const same = write('same.md', src);
+    const s = run([same, same]);
+    assert('review: output equal to the input is refused',
+      s.status === 1 && s.stderr.includes('would overwrite the input') && fs.readFileSync(same, 'utf8') === src, s.stderr);
+  }
+
+  // Unknown options, missing values and extra positionals are errors
+  {
+    const md = write('args.md', '---\ntitle: Args\n---\n\n## A\n');
+    for (const [label, argv, want] of [
+      ['misspelt option', [md, '-f', 'html', '--no-external-link'], 'Unknown option: --no-external-link'],
+      ['option without its value', [md, '-f', 'html', '-b'], 'Missing value for -b'],
+      ['third positional argument', [md, path.join(dir, 'a1.html'), path.join(dir, 'a2.html')], 'Unexpected argument'],
+    ]) {
+      const r = run(argv, { cwd: dir });
+      assert(`review: cli rejects ${label}`,
+        r.status === 1 && r.stderr.includes(want) && r.stderr.includes('--help')
+        && !fs.existsSync(path.join(dir, '--no-external-link')) && !fs.existsSync(path.join(dir, '-b')), r.stderr);
+    }
+  }
+
+  // Folder merge: .MD / .markdown files are included; "#anchor" links get the doc prefix
+  {
+    const merge = path.join(dir, 'merge');
+    fs.mkdirSync(merge);
+    fs.writeFileSync(path.join(merge, 'a.md'), '---\ntitle: Doc A\n---\n\n## One\n\n[Go A](#one)\n');
+    fs.writeFileSync(path.join(merge, 'b.MD'), '---\ntitle: Doc B\n---\n\n## One\n\n[Go B](#one)\n');
+    fs.writeFileSync(path.join(merge, 'c.markdown'), '---\ntitle: Doc C\n---\n\n## Three\n');
+    const out = path.join(dir, 'merge.html');
+    const r = run([merge, out]);
+    const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    assert('review: folder merge includes .MD and .markdown files',
+      html.includes('Doc B') && html.includes('Doc C'), r.stderr);
+    assert('review: merged "#anchor" link reaches its own document\'s heading',
+      html.includes('<a href="#doc-1-one">Go B</a>') && html.includes('id="doc-1-one"')
+      && html.includes('<a href="#doc-0-one">Go A</a>'), (html.match(/<a href="#doc-\d-one">[^<]*/g) || []).join(' '));
+  }
+
+  // javascript:/vbscript:/data: links become plain text; raw <a href> obeys --no-external-links
+  {
+    const md = write('unsafe.md', '---\ntitle: Unsafe\n---\n\n## One\n\n'
+      + '[js](javascript:alert(1)) [js2](JaVaScRiPt&#58;alert(2)) [vb](vbscript:x) [dat](data:text/html,x) [ok](#one)\n\n'
+      + 'Inline <a href="https://example.com/raw">raw</a> and <a href="#one">here</a>.\n\n'
+      + '<div><a href=\'https://example.com/block\'>blk</a></div>\n');
+    const out = path.join(dir, 'unsafe.html');
+    let r = run([md, out]);
+    let html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    assert('review: javascript:/vbscript:/data: links become plain text',
+      r.status === 0 && !/href="\s*(javascript|vbscript|data)/i.test(html) && !html.includes('&#58;alert')
+      && /js js2 vb dat <a href="#one">ok<\/a>/.test(html), r.stderr);
+    r = run([md, out, '--no-external-links']);
+    html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    assert('review: --no-external-links strips raw HTML <a href> too, keeps its text and #anchors',
+      r.status === 0 && !html.includes('example.com/') && html.includes('Inline raw and <a href="#one">here</a>.')
+      && html.includes('<div>blk</div>'), r.stderr);
+  }
+
+  // Heading ids: unique against every issued id, non-empty; plain text from inline tokens
+  {
+    const p = parseMarkdown(write('ids.md', '## Foo\n\n## Foo\n\n## Foo-2\n\n## 日本語\n\n'
+      + '## See [API](https://example.com) &amp; _details_\n\n## snake_case name\n'));
+    assert('review: heading ids unique and never empty',
+      p.tocEntries.map(e => e.id).join(' ') === 'foo foo-2 foo-2-2 section see-api-details snakecase-name',
+      p.tocEntries.map(e => e.id).join(' '));
+    assert('review: formatted heading TOC text has no URL or entity',
+      p.tocEntries[4].text === 'See API & details', p.tocEntries[4].text);
+    const fixtureIds = parseMarkdown(FIXTURE).tocEntries.map(e => e.id);
+    assert('review: fixture heading ids unchanged',
+      fixtureIds.includes('third-level-heading-h3') && fixtureIds.includes('fourth-level-heading-h4') && fixtureIds.includes('special-characters'));
+  }
+
+  // version: only a plain one-line scalar is read raw
+  {
+    const v = fm => parseMarkdown(write('v.md', `---\n${fm}---\n\n## H\n`)).version;
+    assert('review: empty version does not swallow the next line', v('version:\nstatus: draft\n') === '');
+    assert('review: version comment ignored', v('version: 1.0 # current\n') === '1.0');
+  }
+
+  // --link-base: per-segment decoding, "..name" inside the root, http(s) only, same-origin id
+  {
+    const md = write('lb.md', '---\ntitle: LB\n---\n\n## One\n\n[hash](a%23b.md) [dots](..draft.md)\n');
+    const out = path.join(dir, 'lb.html');
+    const r = run([md, out, '--link-base', 'https://example.com/base/'], { cwd: dir });
+    const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    assert('review: --link-base keeps "%23" single-encoded and "..draft.md" inside the root',
+      html.includes('href="https://example.com/base/a%23b.html"') && html.includes('href="https://example.com/base/..draft.html"'), r.stderr);
+    for (const [label, base, want] of [
+      ['non-http scheme', 'javascript:alert(1)', 'must be an http(s) URL'],
+      ['SharePoint id pointing to another site', 'https://good.example/Forms/AllItems.aspx?id=https%3A%2F%2Fevil.example%2F', 'id parameter'],
+    ]) {
+      const e = run([md, out, '--link-base', base], { cwd: dir });
+      assert(`review: --link-base rejects ${label}`, e.status === 1 && e.stderr.includes(want) && noStack(e.stderr), e.stderr);
+    }
+  }
+
+  // The wrapper answers --help and --version itself
+  try {
+    const wrapper = path.join(__dirname, '..', 'bin', 'cognizone-convert.js');
+    const help = execFileSync(process.execPath, [wrapper, '--help'], { stdio: 'pipe' }).toString();
+    assert('review: wrapper --help prints usage', help.includes('Usage'));
+    const version = execFileSync(process.execPath, [wrapper, '--version'], { stdio: 'pipe' }).toString().trim();
+    assert('review: wrapper --version prints the package version', version === require('../package.json').version, version);
+  } catch (e) {
+    assert('review: wrapper --help / --version exit 0', false, e.stderr?.toString() || e.message);
+  }
+}
+
 // ── Report ───────────────────────────────────────────────────────────────────
 console.log('');
 for (const t of tests) {

@@ -17,22 +17,31 @@ let relativeLinks = false;
 let linkBase;
 let inputArg, outputArg;
 
+function usageError(msg) {
+  console.error(`${msg} See cognizone-convert --help.`);
+  process.exit(1);
+}
+
 for (let i = 0; i < args.length; i++) {
-  if ((args[i] === '--format' || args[i] === '-f') && args[i + 1]) {
-    format = args[++i].toLowerCase();
-  } else if ((args[i] === '--brand' || args[i] === '-b') && args[i + 1]) {
-    brandArg = args[++i].toLowerCase();
-  } else if (args[i] === '--no-external-links') {
+  const a = args[i];
+  if (['--format', '-f', '--brand', '-b', '--link-base'].includes(a)) {
+    const value = args[++i];
+    if (value === undefined || value.startsWith('-')) usageError(`Missing value for ${a}.`);
+    if (a === '--format' || a === '-f') format = value.toLowerCase();
+    else if (a === '--brand' || a === '-b') brandArg = value.toLowerCase();
+    else { linkBase = value; relativeLinks = true; }
+  } else if (a === '--no-external-links') {
     stripExternalLinks = true;
-  } else if (args[i] === '--relative-links') {
+  } else if (a === '--relative-links') {
     relativeLinks = true;
-  } else if (args[i] === '--link-base' && args[i + 1]) {
-    linkBase = args[++i];
-    relativeLinks = true;
+  } else if (a.startsWith('-')) {
+    usageError(`Unknown option: ${a}.`);
   } else if (!inputArg) {
-    inputArg = args[i];
+    inputArg = a;
   } else if (!outputArg) {
-    outputArg = args[i];
+    outputArg = a;
+  } else {
+    usageError(`Unexpected argument: ${a} (input ${inputArg} and output ${outputArg} are already given).`);
   }
 }
 
@@ -62,13 +71,19 @@ format = format || 'pdf';
 // view (".../Forms/AllItems.aspx?id=/sites/x/Shared Documents/specs&viewid=..."): the
 // folder path is in its id parameter.
 function folderUrl(input) {
+  const fail = msg => { console.error(`--link-base: ${msg}`); process.exit(1); };
   let u;
   try { u = new URL(input); } catch {
-    console.error(`--link-base: not a URL: ${input}`);
-    process.exit(1);
+    fail(`not a URL: ${input}`);
   }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') fail(`must be an http(s) URL: ${input}`);
   const id = u.searchParams.get('id');
-  if (id) return new URL(id.replace(/\/?$/, '/'), u.origin).href;
+  if (id !== null) {
+    // only a folder path on the same site ("/sites/x/Shared Documents/specs")
+    const folder = /^\/(?![/\\])/.test(id) && new URL(id.replace(/\/?$/, '/'), u.origin);
+    if (!folder || folder.origin !== u.origin) fail(`the id parameter is not a folder path starting with "/": ${id}`);
+    return folder.href;
+  }
   u.search = ''; u.hash = '';
   u.pathname = u.pathname.replace(/\/Forms\/[^/]+\.aspx$/i, '').replace(/\/?$/, '/');
   return u.href;
@@ -110,9 +125,26 @@ function findMarkdownFiles(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) results.push(...findMarkdownFiles(full));
-    else if (entry.name.endsWith('.md')) results.push(full);
+    else if (/\.(md|markdown)$/i.test(entry.name)) results.push(full);
   }
   return results.sort();
+}
+
+// The output would overwrite a source file: same path, or the same file through a
+// symlink, hard link or case-insensitive name
+function sameFile(a, b) {
+  if (path.resolve(a) === path.resolve(b)) return true;
+  try {
+    const x = fs.statSync(a, { bigint: true }), y = fs.statSync(b, { bigint: true });
+    return x.dev === y.dev && x.ino === y.ino;
+  } catch {
+    return false;  // the output does not exist yet
+  }
+}
+function refuseOverwrite(source, outputFile) {
+  if (!sameFile(source, outputFile)) return;
+  console.error(`Output ${outputFile} would overwrite the input ${source}; give another output file.`);
+  process.exit(1);
 }
 
 // Recent npm versions skip install scripts by default, so puppeteer's postinstall may
@@ -139,12 +171,14 @@ async function main() {
       process.exit(1);
     }
 
-    console.log(`Found ${mdFiles.length} markdown file(s) in ${path.basename(inputPath)}/`);
-    const parsedDocs = mdFiles.map(f => parseMarkdown(f, { stripExternal: stripExternalLinks }));
-
     const folderName = path.basename(inputPath);
     const ext = format === 'html' ? '.html' : '.pdf';
     const outputFile = path.resolve(outputArg || `${folderName}${ext}`);
+    for (const f of mdFiles) refuseOverwrite(f, outputFile);
+
+    console.log(`Found ${mdFiles.length} markdown file(s) in ${path.basename(inputPath)}/`);
+    // "#anchor" links get the doc-{i}- prefix the merged renderers give heading ids
+    const parsedDocs = mdFiles.map((f, i) => parseMarkdown(f, { stripExternal: stripExternalLinks, anchorPrefix: `doc-${i}-` }));
 
     const brand = pickBrand(parsedDocs[0]);
     if (format === 'html') {
@@ -157,7 +191,9 @@ async function main() {
     console.log(`Written: ${outputFile}`);
   } else {
     const ext = format === 'docx' ? '.docx' : format === 'html' ? '.html' : '.pdf';
-    const outputFile = path.resolve(outputArg || inputPath.replace(/\.md$/, ext));
+    const { dir, name } = path.parse(inputPath);
+    const outputFile = path.resolve(outputArg || path.join(dir, name + ext));
+    refuseOverwrite(inputPath, outputFile);
     // ponytail: Chrome resolves relative hrefs against the page base when printing, so a PDF
     // gets absolute file:// links; post-process the PDF annotations if PDF ever needs this
     if (relativeLinks && !linkBase && format === 'pdf') console.warn('--relative-links: PDF links become absolute file paths on this machine; use docx or html for a delivery.');
@@ -180,6 +216,6 @@ async function main() {
 }
 
 main().catch(err => {
-  console.error(err);
+  console.error(err.userError ? err.message : err);
   process.exit(1);
 });
