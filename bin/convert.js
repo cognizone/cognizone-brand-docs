@@ -5,11 +5,12 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { parseMarkdown } = require('./parse');
 
 // ── Parse arguments ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
-let format = 'pdf';
+let format;
 let brandArg;
 let stripExternalLinks = false;
 let relativeLinks = false;
@@ -40,10 +41,22 @@ if (!inputArg) {
   process.exit(1);
 }
 
-if (!['pdf', 'docx', 'html'].includes(format)) {
+const FORMATS = ['pdf', 'docx', 'html'];
+if (format && !FORMATS.includes(format)) {
   console.error(`Unknown format: ${format}. Supported: pdf, docx, html`);
   process.exit(1);
 }
+
+// The output file's extension picks the format when -f is absent, and must agree with it when given
+const outExt = outputArg && path.extname(outputArg).slice(1).toLowerCase();
+if (FORMATS.includes(outExt)) {
+  if (format && format !== outExt) {
+    console.error(`Output file ${outputArg} does not match --format ${format}.`);
+    process.exit(1);
+  }
+  format = outExt;
+}
+format = format || 'pdf';
 
 // --link-base takes the folder's web address. A SharePoint address bar shows the library
 // view (".../Forms/AllItems.aspx?id=/sites/x/Shared Documents/specs&viewid=..."): the
@@ -102,14 +115,23 @@ function findMarkdownFiles(dir) {
   return results.sort();
 }
 
+// Recent npm versions skip install scripts by default, so puppeteer's postinstall may
+// never have downloaded Chrome. Fetch it on first use instead (HTML needs no browser).
+function ensureChrome() {
+  const exe = require('puppeteer').executablePath();
+  if (fs.existsSync(exe)) return;
+  console.error('Chrome for rendering is not installed yet; downloading it once (npm skipped puppeteer\'s install script)...');
+  execFileSync(process.execPath, [require.resolve('puppeteer/install.mjs')], { stdio: 'inherit' });
+}
+
 // ── Parse + render ───────────────────────────────────────────────────────────
 async function main() {
+  if (isDirectory && format === 'docx') {
+    console.error('Folder input only supports pdf and html output.');
+    process.exit(1);
+  }
+  if (format !== 'html') ensureChrome();
   if (isDirectory) {
-    if (format === 'docx') {
-      console.error('Folder input only supports pdf and html output.');
-      process.exit(1);
-    }
-
     if (relativeLinks) console.warn('--relative-links / --link-base are ignored for folder merges (one output file).');
     const mdFiles = findMarkdownFiles(inputPath);
     if (!mdFiles.length) {

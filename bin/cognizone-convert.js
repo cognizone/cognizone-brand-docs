@@ -19,7 +19,8 @@ Converts a Markdown file (or folder of files) to a branded Cognizone document.
 When a folder is given, all .md files are merged into a single PDF or HTML file.
 
 Options:
-  -f, --format <pdf|docx|html>  Output format (default: pdf)
+  -f, --format <pdf|docx|html>  Output format (default: pdf, or the output
+                                file's extension when one is given).
                                 Folder input supports pdf and html.
   -b, --brand <2026|classic>    Brand (default: 2026, or the document's
                                 \`brand:\` frontmatter field). classic is the
@@ -55,21 +56,9 @@ Examples:
   process.exit(0);
 }
 
-// Recent npm versions skip install scripts by default, so puppeteer's postinstall may
-// never have downloaded Chrome. Fetch it on first use instead (HTML needs no browser).
-function ensureChrome() {
-  const fi = args.findIndex(a => a === '-f' || a === '--format');
-  if (fi !== -1 && (args[fi + 1] || '').toLowerCase() === 'html') return;
-  const exe = require('puppeteer').executablePath();
-  if (require('fs').existsSync(exe)) return;
-  console.error('Chrome for rendering is not installed yet; downloading it once (npm skipped puppeteer\'s install script)...');
-  execFileSync(process.execPath, [require.resolve('puppeteer/install.mjs')], { stdio: 'inherit' });
-}
-
 const script = path.join(__dirname, 'convert.js');
 
 try {
-  ensureChrome();
   execFileSync(process.execPath, [script, ...args], { stdio: 'inherit' });
 } catch (e) {
   process.exit(e.status || 1);

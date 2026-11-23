@@ -671,6 +671,47 @@ for (const [label, fm, want2026] of [['default is 2026', '', true], ['frontmatte
   }
 }
 
+// The output extension picks the format when --format is absent; a mismatch with --format is an error
+{
+  const md = path.join(OUT_DIR, 'ext-format.md');
+  fs.writeFileSync(md, '---\ntitle: Ext format\n---\n\n## One\n\nText.\n');
+  for (const [ext, magic] of [['docx', 'PK'], ['html', '<!DOCTYPE html>']]) {
+    const out = path.join(OUT_DIR, `ext-format.${ext}`);
+    try {
+      execFileSync(process.execPath, [CONVERT, md, out], { stdio: 'pipe' });
+      assert(`cli: output .${ext} without --format writes ${ext}`, fs.readFileSync(out, 'latin1').startsWith(magic));
+    } catch (e) {
+      assert(`cli: output .${ext} without --format writes ${ext}`, false, e.stderr?.toString() || e.message);
+    }
+  }
+  const out = path.join(OUT_DIR, 'ext-mismatch.docx');
+  fs.rmSync(out, { force: true });
+  try {
+    execFileSync(process.execPath, [CONVERT, md, out, '--format', 'pdf'], { stdio: 'pipe' });
+    assert('cli: output .docx with --format pdf rejected', false, 'should have thrown');
+  } catch (e) {
+    assert('cli: output .docx with --format pdf rejected', e.status !== 0 && !fs.existsSync(out), e.stderr?.toString());
+  }
+  try {
+    const upper = path.join(OUT_DIR, 'ext-format-upper.HTML');
+    execFileSync(process.execPath, [CONVERT, md, upper], { stdio: 'pipe' });
+    assert('cli: uppercase .HTML output writes html', fs.readFileSync(upper, 'utf8').startsWith('<!DOCTYPE html>'));
+  } catch (e) {
+    assert('cli: uppercase .HTML output writes html', false, e.stderr?.toString() || e.message);
+  }
+  for (const [label, extra, want] of [
+    ['folder input with .docx output and no --format rejected', [mergeDir, path.join(OUT_DIR, 'merged-noflag.docx')], 'Folder input only supports pdf and html'],
+    ['--format nope rejected as unknown format', [md, path.join(OUT_DIR, 'x.docx'), '--format', 'nope'], 'Unknown format'],
+  ]) {
+    try {
+      execFileSync(process.execPath, [CONVERT, ...extra], { stdio: 'pipe' });
+      assert(`cli: ${label}`, false, 'should have thrown');
+    } catch (e) {
+      assert(`cli: ${label}`, e.status !== 0 && (e.stderr?.toString() || '').includes(want), e.stderr?.toString());
+    }
+  }
+}
+
 try {
   execFileSync(process.execPath, [CONVERT, FIXTURE, '/dev/null', '--brand', 'nope'], { stdio: 'pipe' });
   assert('edge: unknown brand rejected', false, 'should have thrown');

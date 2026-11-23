@@ -70,6 +70,8 @@ cognizone-convert docs/ -f html                      # merges all .md files → 
 cognizone-convert docs/ merged-output.pdf            # custom output path
 ```
 
+Without `-f`, an output path ending in `.pdf`, `.docx` or `.html` picks the format (`document.md out.docx` writes Word).
+
 All output uses the 2026 Cognizone brand; no flag is needed.
 
 A Word file opens with `–` in place of the contents page numbers. To fill them in, choose **References → Update Table → Update page numbers only** in Word. Don't pick "Update entire table": it replaces the 2026 styling with Word's default look.
@@ -133,7 +135,7 @@ Markdown in a repo links to GitHub, to other docs by relative path, and to headi
 | `--relative-links` | A relative link to another `.md` points at that doc's converted file: `../EVR-10/case-model.md#states` → `../EVR-10/case-model.docx`. |
 | `--link-base <url>` | As `--relative-links`, but the link is a full web address: `<url>` + the target's path from the folder you run the command from. |
 
-All three work for PDF, Word and HTML. `--relative-links` and `--link-base` apply to single files only (a folder merge is one file), and they drop the `#section`: the link opens the other doc at its start.
+`--no-external-links` and `--link-base` work for PDF, Word and HTML; `--relative-links` is for Word and HTML (a PDF gets absolute paths on the machine that made it). `--relative-links` and `--link-base` apply to single files only (a folder merge is one file), and they drop the `#section`: the link opens the other doc at its start.
 
 ### Word files on SharePoint
 

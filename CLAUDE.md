@@ -14,8 +14,8 @@ Supports single-file conversion (PDF, DOCX, or HTML) and folder merge (all `.md`
 
 ```
 bin/
-  cognizone-convert.js    # CLI entry point — help/version, downloads Chrome on first use, calls convert.js
-  convert.js              # Thin orchestrator — parse + route to renderer
+  cognizone-convert.js    # CLI entry point — help/version, calls convert.js
+  convert.js              # Thin orchestrator — args/format, downloads Chrome on first use, parse + route to renderer
   parse.js                # Shared parsing: frontmatter, lexing, section numbers, TOC
   render-pdf.js           # PDF renderer (HTML assembly + Puppeteer)
   render-docx.js          # DOCX renderer (token tree → docx Document)
@@ -44,7 +44,7 @@ package.json              # npm package config
 
 ## Cross-platform
 
-The tool itself must work on macOS, Windows and Linux: no shell scripts, spawn Node with `process.execPath` (not `'node'`), build paths with `path`, and keep install steps to plain `npm`. Recent npm versions skip install scripts by default, so puppeteer's postinstall may never fetch Chrome; `ensureChrome()` in `bin/cognizone-convert.js` runs puppeteer's own `install.mjs` on first use instead (skipped for HTML output).
+The tool itself must work on macOS, Windows and Linux: no shell scripts, spawn Node with `process.execPath` (not `'node'`), build paths with `path`, and keep install steps to plain `npm`. Recent npm versions skip install scripts by default, so puppeteer's postinstall may never fetch Chrome; `ensureChrome()` in `bin/convert.js` runs puppeteer's own `install.mjs` on first use instead (skipped for HTML output).
 
 ## Conversion Pipeline
 
@@ -271,6 +271,7 @@ To update, run the same command again.
 cognizone-convert document.md                    # → document.pdf
 cognizone-convert document.md --format docx      # → document.docx
 cognizone-convert document.md output.pdf         # custom output path
+cognizone-convert document.md out.docx           # format from the output extension (when no -f)
 cognizone-convert document.md -b classic         # old brand
 cognizone-convert document.md --no-external-links  # non-#anchor links → plain text (stripped in parse.js, all formats)
 cognizone-convert document.md --relative-links     # relative .md links → converted sibling (.docx/.html; PDF gets absolute file://)
