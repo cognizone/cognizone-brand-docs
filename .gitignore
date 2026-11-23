@@ -1,5 +1,8 @@
 node_modules/
 *.pdf
+# Converted documents in the repo root (client files; this repo is public)
+/*.docx
+/*.html
 .idea/
 test/output/*
 
