@@ -1,58 +1,108 @@
+/* Cognizone 2026 brand — PDF styles. Source of truth: reference/brand-2026-spec.md */
+
+@font-face {
+  font-family: 'Calistoga';
+  src: url('fonts/Calistoga-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+}
+
+/* Static instances of the variable fonts (cut with fontTools varLib.instancer). Chrome
+   embeds a variable font in a PDF as Type 3 glyph outlines, which viewers draw thinner
+   than real fonts and do not treat as text fonts; static TTFs embed as TrueType. */
+
 @font-face {
   font-family: 'Roboto';
-  src: url('fonts/Roboto[wdth,wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('fonts/static/Roboto-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
   font-family: 'Roboto';
-  src: url('fonts/Roboto-Italic[wdth,wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('fonts/static/Roboto-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('fonts/static/Roboto-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Roboto';
+  src: url('fonts/static/Roboto-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
   font-style: italic;
 }
 
 @font-face {
   font-family: 'Roboto Mono';
-  src: url('fonts/RobotoMono[wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('fonts/static/RobotoMono-Regular.ttf') format('truetype');
+  font-weight: 400;
   font-style: normal;
 }
 
 @font-face {
   font-family: 'Roboto Mono';
-  src: url('fonts/RobotoMono-Italic[wght].ttf') format('truetype');
-  font-weight: 100 900;
+  src: url('fonts/static/RobotoMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('fonts/static/RobotoMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Roboto Mono';
+  src: url('fonts/static/RobotoMono-BoldItalic.ttf') format('truetype');
+  font-weight: 700;
   font-style: italic;
 }
 
 /* ── Page ─────────────────────────────────────────────────────────────────── */
 
+/* Header and footer are CSS page-margin boxes injected by pdf-print.js.
+   Cover pages use the named page `cover`: no margins, so no header/footer. */
 @page {
   size: A4;
   margin: 25mm 20mm 20mm 20mm;
 }
 
+@page cover {
+  margin: 0;
+}
+
 /* ── Variables ────────────────────────────────────────────────────────────── */
 
 :root {
-  --green:          #058775;
-  --dark:           #353744;
-  --dark2:          #272727;
-  --gray:           #666666;
-  --light-green-bg: #E8F5F3;
-  --mono-green:     #188038;
-  --white:          #ffffff;
-  --border:         #BFBFBF;
+  --plum:      #2F2450;
+  --ink:       #2B2340;
+  --plum-soft: #4A3A78;
+  --pink-deep: #C85A8A;
+  --pink:      #E17B9E;
+  --muted:     #6B6185;
+  --blue:      #3D6BB8;
+  --sand:      #F3EBDE;
+  --cream:     #FBF6F1;
+  --rule:      #E2D8CB;
+  --white:     #FFFFFF;
 }
 
 /* ── Base ─────────────────────────────────────────────────────────────────── */
 
 body {
   font-family: 'Roboto', sans-serif;
-  font-size: 10pt;
-  color: var(--dark);
-  line-height: 1.5;
+  font-size: 9.5pt;
+  color: var(--ink);
+  line-height: 1.2;
   margin: 0;
   padding: 0;
 }
@@ -60,51 +110,90 @@ body {
 /* ── Headings ─────────────────────────────────────────────────────────────── */
 
 h1 {
-  font-size: 14pt;
-  font-weight: 700;
-  color: var(--dark);
-  margin-top: 16pt;
-  margin-bottom: 6pt;
+  font-family: 'Calistoga', serif;
+  font-size: 20pt;
+  font-weight: 400;
+  color: var(--plum);
+  margin-top: 24pt;
+  margin-bottom: 12pt;
   page-break-after: avoid;
 }
 
+/* H2: mono eyebrow number ("01") above a Calistoga heading */
 h2 {
-  font-size: 13pt;
-  font-weight: 700;
-  color: var(--dark);
-  margin-top: 13pt;
-  margin-bottom: 5pt;
-  padding-bottom: 3pt;
-  border-bottom: 0.25px solid var(--dark);
+  font-family: 'Calistoga', serif;
+  font-size: 20pt;
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--plum);
+  margin-top: 24pt;
+  margin-bottom: 12pt;
   page-break-after: avoid;
+}
+
+h2 .header-section-number {
+  display: block;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 1pt;
+  line-height: 1.2;
+  color: var(--pink-deep);
+  margin-bottom: 2pt;
 }
 
 h3 {
   font-size: 12pt;
   font-weight: 700;
-  color: var(--green);
+  color: var(--plum);
+  margin-top: 14pt;
+  margin-bottom: 12pt;
+  padding-bottom: 3pt;
+  border-bottom: 0.75pt solid var(--pink);
+  page-break-after: avoid;
+}
+
+h3 .header-section-number {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 10pt;
+  font-weight: 700;
+  color: var(--pink-deep);
+  margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
+}
+
+.num-dot {
+  margin: 0 -0.15em;              /* Roboto Mono's dot cell is digit-wide: pull it in */
+}
+
+h4, h5, h6 {
+  font-size: 10.5pt;
+  font-weight: 700;
+  color: var(--plum-soft);
   margin-top: 10pt;
   margin-bottom: 4pt;
   page-break-after: avoid;
 }
 
-h4 {
-  font-size: 11pt;
+h4 .header-section-number,
+h5 .header-section-number,
+h6 .header-section-number {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 9pt;
   font-weight: 700;
-  color: var(--dark2);
-  margin-top: 8pt;
-  margin-bottom: 3pt;
-  page-break-after: avoid;
+  color: var(--pink-deep);
+  margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
 
 /* Keep headings glued to their first following block.
    Chrome's PDF renderer honors `page-break-after: avoid` on the heading
    only unreliably — also telling the next sibling "don't break before me"
    gives it a second constraint to satisfy, which lands the correct layout. */
-h1, h2, h3, h4 {
+h1, h2, h3, h4, h5, h6 {
   break-after: avoid;
+  break-inside: avoid;            /* never strand the H2 eyebrow number */
+  page-break-inside: avoid;
 }
-h1 + *, h2 + *, h3 + *, h4 + * {
+h1 + *, h2 + *, h3 + *, h4 + *, h5 + *, h6 + * {
   page-break-before: avoid;
   break-before: avoid;
 }
@@ -113,35 +202,38 @@ h1 + *, h2 + *, h3 + *, h4 + * {
 
 p {
   margin-top: 0;
-  margin-bottom: 8pt;
+  margin-bottom: 6pt;
 }
 
 /* ── Inline code ──────────────────────────────────────────────────────────── */
 
 code {
   font-family: 'Roboto Mono', monospace;
-  font-size: 9pt;
-  color: var(--mono-green);
-  background-color: #f5f5f5;
-  padding: 1px 4px;
+  font-size: 8.5pt;
+  color: var(--pink-deep);
+  background-color: var(--sand);
+  padding: 0.5pt 3pt;
   border-radius: 2px;
 }
 
 /* ── Code blocks ──────────────────────────────────────────────────────────── */
 
 pre {
-  background-color: #f5f5f5;
-  border-left: 3px solid var(--green);
-  padding: 10pt 12pt;
-  margin: 8pt 0;
+  background-color: var(--cream);
+  border: 0.5pt solid var(--rule);
+  border-left: 3pt solid var(--plum);
+  padding: 6pt;
+  margin: 6pt 0 8pt 0;
   page-break-inside: avoid;
   overflow-x: auto;
+  white-space: pre-wrap;
 }
 
 pre code {
   font-family: 'Roboto Mono', monospace;
-  font-size: 8.5pt;
-  color: var(--mono-green);
+  font-size: 8pt;
+  line-height: 1.35;
+  color: var(--plum);
   background: none;
   padding: 0;
   border-radius: 0;
@@ -151,9 +243,10 @@ pre code {
 
 pre.mermaid {
   background: none;
-  border-left: none;
-  padding: 16pt 0;
+  border: none;
+  padding: 12pt 0;
   text-align: center;
+  white-space: pre;
 }
 
 pre.mermaid svg {
@@ -164,28 +257,29 @@ pre.mermaid svg {
 /* ── Blockquote / callout ─────────────────────────────────────────────────── */
 
 blockquote {
-  margin: 8pt 0;
-  padding: 6pt 12pt;
-  border-left: 4px solid var(--green);
+  margin: 6pt 0 8pt 3mm;
+  padding: 6pt 8pt;
+  border-left: 3pt solid var(--pink-deep);
+  background-color: var(--sand);
   font-style: italic;
-  color: #444444;
-  background: none;
+  color: var(--plum-soft);
 }
 
-blockquote p {
+blockquote p,
+blockquote li {
+  color: var(--plum-soft);
+  font-style: italic;
+}
+
+blockquote > :last-child {
   margin-bottom: 0;
 }
 
-/* ── TODO blocks (indented code lines starting with TODO:) ────────────────── */
+/* ── TODO blocks ──────────────────────────────────────────────────────────── */
 
 pre code.language-todo,
 code.todo {
   color: #BF5700;
-}
-
-/* Pandoc renders "    TODO: ..." as a code block — style it as a warning */
-pre:has(code:-webkit-any(:first-line)) {
-  border-left-color: var(--green);
 }
 
 /* ── Tables ───────────────────────────────────────────────────────────────── */
@@ -193,51 +287,122 @@ pre:has(code:-webkit-any(:first-line)) {
 table {
   width: 100%;
   border-collapse: collapse;
-  margin: 10pt 0;
-  font-size: 9.5pt;
+  margin: 8pt 0 10pt 0;
+  font-size: 8.5pt;
+  line-height: 1.05;
   page-break-inside: avoid;
 }
 
+thead {
+  display: table-header-group;   /* repeat the header row on each page */
+}
+
 thead tr {
-  background-color: var(--green);
+  background-color: var(--plum);
   color: var(--white);
 }
 
 thead th {
   font-weight: 700;
-  padding: 6pt 8pt;
-  border: 1px solid var(--border);
+  padding: 3pt 4.5pt;
+  border: none;
+  border-bottom: 0.5pt solid var(--rule);
   text-align: left;
+  vertical-align: bottom;
 }
 
 /* Honour column alignment from the markdown delimiter row (:---:, ---:) */
 thead th[align="center"] { text-align: center; }
 thead th[align="right"] { text-align: right; }
 
-tbody tr:nth-child(even) {
-  background-color: var(--light-green-bg);
-}
-
 tbody tr:nth-child(odd) {
   background-color: var(--white);
 }
 
+tbody tr:nth-child(even) {
+  background-color: var(--cream);
+}
+
 tbody td {
-  padding: 5pt 8pt;
-  border: 1px solid var(--border);
+  padding: 3pt 4.5pt;
+  border: none;
+  border-bottom: 0.5pt solid var(--rule);
   vertical-align: top;
 }
 
 /* ── Lists ────────────────────────────────────────────────────────────────── */
 
+/* 6.35mm indent per level, 4.2mm hanging; bullets/numbers in pink deep */
 ul, ol {
-  margin: 4pt 0 8pt 0;
-  padding-left: 20pt;
+  margin: 0 0 6pt 0;
+  padding-left: 6.35mm;
 }
 
 li {
-  margin-bottom: 3pt;
-  line-height: 1.5;
+  margin-bottom: 4pt;
+  line-height: 1.2;
+}
+
+li > ul, li > ol {
+  margin-top: 4pt;
+  margin-bottom: 0;
+}
+
+li > p {
+  margin-bottom: 4pt;
+}
+
+ul {
+  list-style: none;
+}
+
+ul > li {
+  position: relative;
+}
+
+ul > li::before {
+  content: '\2022';               /* • */
+  position: absolute;
+  left: -4.2mm;
+  color: var(--pink-deep);
+  font-style: normal;
+  /* Roboto's • is 0.21 em across, barely bigger than a full stop: 1.6×. The line height
+     drops its centre (0.37 em up) onto the text's x-height middle (0.26 em up) */
+  font-size: 1.6em;
+  line-height: 0.9;
+}
+
+:is(ul, ol) ul > li::before {
+  content: '\25E6';               /* ◦ */
+  font-size: 1em;
+  line-height: 1.2;
+}
+
+:is(ul, ol) :is(ul, ol) ul > li::before {
+  content: '\2013';               /* – */
+  font-size: 1em;
+  line-height: 1.2;
+}
+
+ol {
+  list-style-type: decimal;
+}
+
+:is(ul, ol) ol {
+  list-style-type: lower-alpha;
+}
+
+:is(ul, ol) :is(ul, ol) ol {
+  list-style-type: lower-roman;
+}
+
+ol > li::marker {
+  color: var(--pink-deep);
+  font-style: normal;
+}
+
+ol > li {
+  padding-left: 1mm;
 }
 
 /* ── Images ───────────────────────────────────────────────────────────────── */
@@ -250,7 +415,7 @@ img {
 /* ── Links ────────────────────────────────────────────────────────────────── */
 
 a {
-  color: var(--green);
+  color: var(--blue);
   text-decoration: none;
 }
 
@@ -258,121 +423,164 @@ a {
 
 hr {
   border: none;
-  border-top: 1px solid var(--border);
-  margin: 12pt 0;
+  border-top: 0.5pt solid var(--rule);
+  margin: 10pt 0;
 }
-
-/* Header and footer are rendered by Puppeteer in the page margin — no CSS needed. */
 
 /* ── Cover page ───────────────────────────────────────────────────────────── */
 
+/* In print the cover fills its own margin-less page (named page `cover`) so
+   the address block can sit at the page bottom. On screen (where pdf-print.js
+   measures TOC page numbers) it keeps its natural height. */
 .cover-page {
-  margin-top: 20mm;
-  padding: 0;
-}
-
-.cover-logo-block {
   display: flex;
   flex-direction: column;
-  gap: 4pt;
-  margin-bottom: 32pt;
+  box-sizing: border-box;
 }
 
-.cover-logo {
-  height: 36px;
+@media print {
+  .cover-page {
+    page: cover;
+    height: 296mm;
+    padding: 20mm;
+    overflow: hidden;
+  }
+}
+
+.cover-lockup {
+  display: flex;
+  align-items: center;
+  margin: 20pt 0 80pt 0;
+  font-size: 20pt;
+  font-weight: 700;
+  color: var(--plum);
+  line-height: 1;
+}
+
+.cover-lockup img {
   width: auto;
-  max-width: 220px;
+  height: 13.6mm;                 /* icon is cropped to its nodes: same size as the old 17mm square */
+  margin-right: 6.8mm;            /* half the icon height, as the brand lockup */
 }
 
-.cover-contact {
-  display: flex;
-  flex-direction: column;
-  gap: 2pt;
-  margin-bottom: 32pt;
-  align-items: flex-end;
-  text-align: right;
-}
-
-.cover-contact a {
+.cover-eyebrow {
+  font-family: 'Roboto Mono', monospace;
   font-size: 9pt;
-  color: #0563C1;
-  text-decoration: none;
+  letter-spacing: 3pt;
+  text-transform: uppercase;
+  color: var(--pink-deep);
+  margin: 0 0 12pt 0;
 }
 
-.cover-id {
-  font-size: 13pt;
-  font-weight: 700;
-  color: var(--green);
-  letter-spacing: 0.05em;
-  margin: 0 0 8pt 0;
+.cover-title-block {
+  margin: 0 0 20pt 0;
 }
 
-.cover-title {
-  font-size: 22pt;
-  font-weight: 700;
-  color: var(--dark);
-  margin: 0 0 24pt 0;
-  counter-increment: none;
-  line-height: 1.2;
+.cover-title,
+.cover-subtitle {
+  font-family: 'Calistoga', serif;
+  font-size: 32pt;
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--plum);
+  margin: 0;
 }
 
-.cover-title::before {
-  content: none;
+.cover-subtitle {
+  color: var(--pink-deep);
+}
+
+.cover-summary {
+  font-size: 12pt;
+  line-height: 1.33;
+  color: var(--plum-soft);
+  margin: 0 0 30pt 0;
 }
 
 .cover-meta-table {
-  width: 100%;
+  width: 60%;
   border-collapse: collapse;
-  font-size: 10pt;
-  margin-top: 0;
+  margin: 0;
+  line-height: 1.2;
+  page-break-inside: avoid;
+}
+
+.cover-meta-table tbody tr:nth-child(n) {
+  background-color: transparent;  /* no zebra on the cover table */
 }
 
 .cover-meta-table td {
-  padding: 6pt 10pt;
-  border: 1px solid var(--border);
+  padding: 3pt 6pt;
+  border: none;
+  border-top: 0.5pt solid var(--rule);
+  border-bottom: 0.5pt solid var(--rule);
   vertical-align: top;
+  font-size: 9.5pt;
+  color: var(--ink);
+  background: none;
 }
 
 .cover-meta-table .meta-label {
-  font-weight: 700;
-  background-color: #EAF0F8;
-  width: 30%;
+  width: 32%;
+  background-color: var(--sand);
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7.5pt;
+  letter-spacing: 1pt;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+/* Merged output: the master cover lists the documents — use the full width */
+.cover-meta-table.cover-doc-list {
+  width: 100%;
+}
+
+.cover-meta-table.cover-doc-list .meta-label {
+  width: 12%;
+}
+
+.cover-bottom {
+  margin-top: auto;
+}
+
+.cover-address {
+  font-size: 8.5pt;
+  color: var(--muted);
+  margin: 0 0 3pt 0;
+}
+
+.cover-dateline {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  color: var(--muted);
+  margin: 0;
 }
 
 /* ── Table of contents ────────────────────────────────────────────────────── */
 
-#TOC {
-  font-size: 10pt;
-  margin-top: 16pt;
+.toc-label {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 3pt;
+  color: var(--pink-deep);
+  margin: 0 0 10pt 0;
 }
 
 #TOC ul {
   list-style: none;
   padding-left: 0;
+  margin: 0;
 }
 
-#TOC ul ul {
-  padding-left: 16pt;
+#TOC li {
+  margin: 0;
 }
 
-/* Top-level entries (H2) */
-#TOC > ul > li {
-  margin-bottom: 7pt;
-}
-
-#TOC > ul > li > a {
-  font-weight: 700;
-  color: var(--dark);
-}
-
-/* Sub-entries (H3) */
-#TOC > ul > li > ul > li {
-  margin-bottom: 3pt;
-}
-
-#TOC > ul > li > ul > li > a {
-  font-weight: 400;
-  color: var(--gray);
+#TOC li::before {
+  content: none;
 }
 
 #TOC a {
@@ -381,22 +589,70 @@ hr {
   text-decoration: none;
 }
 
-#TOC a .toc-title {
-  flex-shrink: 1;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-#TOC a .toc-leader {
+#TOC .toc-title {
   flex: 1;
-  border-bottom: 1px dotted var(--border);
-  margin: 0 6pt 3pt 6pt;
-  min-width: 12pt;
+  min-width: 0;
 }
 
-#TOC a .toc-page {
+#TOC .toc-page {
   flex-shrink: 0;
-  color: var(--gray);
+  margin-left: 8pt;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  color: var(--muted);
+}
+
+/* Top-level entries (H2): "CHAPTER 01" in a 26mm number column, ruled below */
+#TOC > ul > li > a {
+  padding-bottom: 3pt;
+  border-bottom: 0.25pt solid var(--rule);
+  margin-bottom: 7pt;
+}
+
+#TOC > ul > li > a .toc-section-number {
+  flex: 0 0 26mm;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  font-weight: 700;
+  color: var(--pink-deep);
+}
+
+#TOC > ul > li > a .toc-title {
+  font-size: 10.5pt;
+  color: var(--plum);
+}
+
+/* Sub-entries (H3 and deeper): indented to the text column, no rule */
+#TOC ul ul {
+  padding-left: 26mm;
+}
+
+#TOC ul ul ul {
+  padding-left: 9mm;
+  margin-top: 3pt;
+}
+
+/* Same gap before the next chapter as after a chapter's rule */
+#TOC > ul > li > ul {
+  margin-bottom: 11pt;
+}
+
+#TOC ul ul li {
+  margin-bottom: 3pt;
+}
+
+#TOC ul ul .toc-section-number {
+  flex: 0 0 auto;
+  min-width: 9mm;
+  padding-right: 4pt;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7.5pt;
+  color: var(--muted);
+}
+
+#TOC ul ul .toc-title {
+  font-size: 9.5pt;
+  color: var(--ink);
 }
 
 /* ── Page break ───────────────────────────────────────────────────────────── */

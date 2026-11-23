@@ -120,10 +120,9 @@ assert('parse: author extracted', parsed.author === 'Cognizone');
 assert('parse: client extracted', parsed.client === 'ERA \u2014 European Union Agency for Railways');
 assert('parse: project extracted', parsed.project === 'REG+');
 assert('parse: headerTitle composed', parsed.headerTitle === 'TEST-001 - Test Document: All Formatting Features');
-assert('parse: footerTitle composed', parsed.footerTitle === 'ERA \u2014 European Union Agency for Railways \u00B7 REG+');
 assert('parse: tokens is array', Array.isArray(parsed.tokens) && parsed.tokens.length > 0);
 assert('parse: tocEntries populated', parsed.tocEntries.length > 0);
-assert('parse: H1 stripped from body', !parsed.mdNoH1.match(/^#\s/m));
+assert('parse: H1 stripped from body', !parsed.tokens.some(t => t.type === 'heading' && t.depth === 1));
 
 // Check section numbering
 const h2s = parsed.tocEntries.filter(e => e.level === 2);
@@ -132,30 +131,6 @@ assert('parse: H2 numbering increments', h2s[1]?.number === '2');
 
 const h3s = parsed.tocEntries.filter(e => e.level === 3);
 assert('parse: H3 numbering is nested', h3s[0]?.number.includes('.'));
-
-// ── Test DOCX generation ─────────────────────────────────────────────────────
-const docxOut = path.join(OUT_DIR, 'fixture.docx');
-try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, docxOut, '--format', 'docx', '--brand', 'classic'], { stdio: 'pipe' });
-  assert('docx: file created', fs.existsSync(docxOut));
-  const docxSize = fs.statSync(docxOut).size;
-  assert('docx: file is non-trivial (>10KB)', docxSize > 10000, `size: ${docxSize}`);
-  // Regression: angle brackets in code blocks must survive (XML-escaped in docx)
-  const docXml = execFileSync('unzip', ['-p', docxOut, 'word/document.xml']).toString();
-  assert('docx: code-block angle brackets preserved',
-    docXml.includes('&lt;http://data.europa.eu/s66#&gt;'),
-    'IRI in code block was dropped or unescaped');
-  // Regression: :---: column alignment reaches the cell paragraphs
-  const pendingPara = docXml.split('</w:p>').find(p => p.includes('>pending<')) || '';
-  assert('docx: centred table column is centred',
-    pendingPara.includes('<w:jc w:val="center"/>'), 'cell paragraph has no center justification');
-  // Regression: blockquote content after the first paragraph (e.g. a list) is not dropped
-  const quotedItem = docXml.split('</w:p>').find(p => p.includes('>Quoted list item two<')) || '';
-  assert('docx: blockquote list rendered with quote styling',
-    quotedItem.includes('F9F9F9') && quotedItem.includes('<w:i/>'), 'quoted list item missing or unstyled');
-} catch (e) {
-  assert('docx: generation succeeds', false, e.stderr?.toString() || e.message);
-}
 
 // ── Test DOCX mermaid sizing + alignment ─────────────────────────────────────
 // fixture.md has two default-sized mermaid blocks (500px cap, centered) and
@@ -181,62 +156,10 @@ function docxDrawings(file) {
 }
 // The drawings that show a mermaid diagram: every picture except the static images
 // (sample image, logos), which would otherwise satisfy extent checks on their own
-const STATIC_IMAGES = ['sample-image.png', '../templates/logo.png', '../templates/2026/icon.png']
+const STATIC_IMAGES = ['sample-image.png', '../templates/icon.png']
   .map(f => fs.readFileSync(path.join(__dirname, f)));
 const mermaidDrawings = file => docxDrawings(file).filter(d => !STATIC_IMAGES.some(s => s.equals(d.media)));
 const FIXTURE_MERMAIDS = (fs.readFileSync(FIXTURE, 'utf8').match(/^```mermaid/gm) || []).length;
-
-try {
-  const mermaid = mermaidDrawings(docxOut);
-  assert('docx mermaid: one drawing per mermaid diagram',
-    FIXTURE_MERMAIDS === 3 && mermaid.length === FIXTURE_MERMAIDS,
-    `found ${mermaid.length} mermaid drawings for ${FIXTURE_MERMAIDS} diagrams`);
-  // The maxWidth=200 align=left diagram: the only mermaid drawing in a left-justified paragraph
-  const left = mermaid.filter(d => d.para.includes('<w:jc w:val="left"/>'));
-  assert('docx mermaid: sized diagram respects maxWidth=200',
-    left.length === 1 && left[0].cx <= 200 * 9525,
-    `left-aligned mermaid extents (EMU): [${left.map(d => d.cx).join(', ')}]`);
-  assert('docx mermaid: align=left produces left-justified paragraph',
-    left.length === 1 && mermaid.filter(d => d.para.includes('<w:jc w:val="center"/>')).length === FIXTURE_MERMAIDS - 1,
-    `${left.length} left-aligned mermaid drawings`);
-} catch (e) {
-  assert('docx mermaid: extent/alignment checks', false, e.stderr?.toString() || e.message);
-}
-
-// ── Test PDF generation ──────────────────────────────────────────────────────
-const pdfOut = path.join(OUT_DIR, 'fixture.pdf');
-try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, pdfOut, '--format', 'pdf', '--brand', 'classic'], { stdio: 'pipe' });
-  assert('pdf: file created', fs.existsSync(pdfOut));
-  const pdfSize = fs.statSync(pdfOut).size;
-  assert('pdf: file is non-trivial (>10KB)', pdfSize > 10000, `size: ${pdfSize}`);
-  // Check PDF magic bytes
-  const header = fs.readFileSync(pdfOut).subarray(0, 5).toString();
-  assert('pdf: valid PDF header', header === '%PDF-', `got: ${header}`);
-} catch (e) {
-  assert('pdf: generation succeeds', false, e.stderr?.toString() || e.message);
-}
-
-// ── Test ordered list numbering restarts ──────────────────────────────────────
-const multiListMd = path.join(OUT_DIR, 'multi-list.md');
-fs.writeFileSync(multiListMd, [
-  '---',
-  'title: Multi List Test',
-  '---',
-  '',
-  '## Section A',
-  '',
-  '1. Alpha',
-  '2. Beta',
-  '3. Gamma',
-  '',
-  '## Section B',
-  '',
-  '1. One',
-  '2. Two',
-  '3. Three',
-  '',
-].join('\n'));
 
 // The numbering of the list item paragraph containing `text`: its numId, that
 // instance's abstractNumId, and the level-0 start number (abstract start, instance override)
@@ -253,31 +176,12 @@ function listNumbering(docXml, numXml, text) {
   };
 }
 
-const multiListOut = path.join(OUT_DIR, 'multi-list.docx');
-try {
-  execFileSync(process.execPath, [CONVERT, multiListMd, multiListOut, '--format', 'docx', '--brand', 'classic'], { stdio: 'pipe' });
-  // DOCX is a ZIP — the two lists' paragraphs must use different numIds, each on its
-  // own abstractNumId (Word ignores startOverride when multiple w:num share the same
-  // abstractNumId)
-  const docXml = execFileSync('unzip', ['-p', multiListOut, 'word/document.xml']).toString();
-  const numXml = execFileSync('unzip', ['-p', multiListOut, 'word/numbering.xml']).toString();
-  const a = listNumbering(docXml, numXml, 'Alpha');
-  const b = listNumbering(docXml, numXml, 'One');
-  assert('docx: separate ordered lists get different abstractNumId',
-    a.numId && b.numId && a.numId !== b.numId
-    && a.abstractNumId && b.abstractNumId && a.abstractNumId !== b.abstractNumId,
-    `Alpha: ${JSON.stringify(a)}, One: ${JSON.stringify(b)}`);
-} catch (e) {
-  assert('docx: separate ordered lists get different numId instances', false,
-    e.stderr?.toString() || e.message);
-}
-
 // ── Test missing frontmatter ─────────────────────────────────────────────────
 const minimalMd = path.join(OUT_DIR, 'minimal.md');
 fs.writeFileSync(minimalMd, '## Just a heading\n\nSome text.\n');
 const minimalOut = path.join(OUT_DIR, 'minimal.docx');
 try {
-  execFileSync(process.execPath, [CONVERT, minimalMd, minimalOut, '--format', 'docx', '--brand', 'classic'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, minimalMd, minimalOut, '--format', 'docx'], { stdio: 'pipe' });
   assert('edge: no frontmatter produces valid docx', fs.existsSync(minimalOut));
 } catch (e) {
   assert('edge: no frontmatter produces valid docx', false, e.stderr?.toString() || e.message);
@@ -286,7 +190,7 @@ try {
 // ── Test HTML generation ─────────────────────────────────────────────────────
 const htmlOut = path.join(OUT_DIR, 'fixture.html');
 try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, htmlOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, FIXTURE, htmlOut, '--format', 'html'], { stdio: 'pipe' });
   assert('html: file created', fs.existsSync(htmlOut));
   const html = fs.readFileSync(htmlOut, 'utf8');
   assert('html: file is non-trivial (>10KB)', html.length > 10000, `size: ${html.length}`);
@@ -303,14 +207,11 @@ try {
   assert('html: bare mermaid block emits default max-width:500px',
     html.includes('max-width:500px'),
     'no default 500px cap on a bare mermaid block');
-  // Cover metadata table now surfaces ID and the document title as rows
+  // Cover metadata table surfaces the ID as a row
   assert('html: cover meta table has ID row',
     /class="meta-label">ID</.test(html),
     'no meta-label cell containing "ID"');
-  assert('html: cover meta table has Document title row',
-    /class="meta-label">Document title</.test(html),
-    'no meta-label cell containing "Document title"');
-  const htmlNoScripts = html.replace(/<script>[\s\S]*?<\/script>/g, '');
+  const htmlNoScripts = html.replace(/<script[\s\S]*?<\/script>/g, '');
   assert('html: raw <img> tags embedded too',
     !/<img\s[^>]*src="(?!data:)/.test(htmlNoScripts),
     'found an <img> with a non-data src');
@@ -351,7 +252,7 @@ function tocStructure(nav) {
 
 const mergedHtmlOut = path.join(OUT_DIR, 'merged.html');
 try {
-  execFileSync(process.execPath, [CONVERT, mergeDir, mergedHtmlOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, mergeDir, mergedHtmlOut, '--format', 'html'], { stdio: 'pipe' });
   assert('html merge: file created', fs.existsSync(mergedHtmlOut));
   const html = fs.readFileSync(mergedHtmlOut, 'utf8');
   assert('html merge: master cover table lists docs',
@@ -365,7 +266,7 @@ try {
   // their document's prefix → doc 1's "## Intro" is 1.1, doc 2's "## Overview" is 2.1
   const masterNav = (html.match(/<nav id="TOC">[\s\S]*?<\/nav>/) || [''])[0];
   assert('html merge: master TOC prefixes nested numbers per document',
-    masterNav.includes('>1.1') && masterNav.includes('>2.1'),
+    masterNav.includes('>1<span class="num-dot">.</span>1') && masterNav.includes('>2<span class="num-dot">.</span>1'),
     `master TOC toc-num spans missing 1.1/2.1: ${masterNav.slice(0, 400)}`);
 
   // TOC nested-list markup must be a well-formed tree (equal <li>/</li> counts
@@ -402,7 +303,7 @@ fs.writeFileSync(noMermaidMd, [
 ].join('\n'));
 const noMermaidOut = path.join(OUT_DIR, 'no-mermaid.html');
 try {
-  execFileSync(process.execPath, [CONVERT, noMermaidMd, noMermaidOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, noMermaidMd, noMermaidOut, '--format', 'html'], { stdio: 'pipe' });
   const html = fs.readFileSync(noMermaidOut, 'utf8');
   assert('html: no-mermaid doc omits the mermaid bundle',
     !html.includes('mermaid.initialize'),
@@ -441,7 +342,7 @@ fs.writeFileSync(mermaidExampleMd, [
 ].join('\n'));
 const mermaidExampleOut = path.join(OUT_DIR, 'mermaid-example.html');
 try {
-  execFileSync(process.execPath, [CONVERT, mermaidExampleMd, mermaidExampleOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, mermaidExampleMd, mermaidExampleOut, '--format', 'html'], { stdio: 'pipe' });
   const html = fs.readFileSync(mermaidExampleOut, 'utf8');
   assert('html: mermaid inside a code example does not inline the bundle',
     !html.includes('mermaid.initialize'),
@@ -470,7 +371,7 @@ fs.writeFileSync(leakMd, [
 ].join('\n'));
 const leakOut = path.join(OUT_DIR, 'leak.html');
 try {
-  execFileSync(process.execPath, [CONVERT, leakMd, leakOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, leakMd, leakOut, '--format', 'html'], { stdio: 'pipe' });
   const html = fs.readFileSync(leakOut, 'utf8');
   const b64Secret = fs.readFileSync(secretTxt).toString('base64');
   assert('html: non-image file content not embedded raw', !html.includes(secretMarker));
@@ -483,7 +384,7 @@ try {
 // ── Test default folder output naming (html) ─────────────────────────────────
 // Folder input with no explicit output → <folder-basename>.html in the CWD.
 try {
-  execFileSync(process.execPath, [CONVERT, mergeDir, '--format', 'html', '--brand', 'classic'], { cwd: OUT_DIR, stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, mergeDir, '--format', 'html'], { cwd: OUT_DIR, stdio: 'pipe' });
   const expected = path.join(OUT_DIR, `${path.basename(mergeDir)}.html`);
   assert('html merge: default output is <folder>.html in CWD',
     fs.existsSync(expected),
@@ -511,7 +412,7 @@ fs.writeFileSync(hostileMd, [
 
 const hostileOut = path.join(OUT_DIR, 'hostile.html');
 try {
-  execFileSync(process.execPath, [CONVERT, hostileMd, hostileOut, '--format', 'html', '--brand', 'classic'], { stdio: 'pipe' });
+  execFileSync(process.execPath, [CONVERT, hostileMd, hostileOut, '--format', 'html'], { stdio: 'pipe' });
   const html = fs.readFileSync(hostileOut, 'utf8');
   assert('html escaping: image href cannot break out of src attribute',
     !/<img[^>]*src="[^"]*"onerror/.test(html) && !html.includes('src="x.png"onerror'));
@@ -541,8 +442,7 @@ try {
   assert('edge: unknown format rejected', true);
 }
 
-// ── 2026 brand (--brand 2026) ────────────────────────────────────────────────
-// ponytail: delete the classic-vs-2026 split here when the classic brand goes
+// ── 2026 brand ───────────────────────────────────────────────────────────────
 const brand2026Md = path.join(OUT_DIR, 'brand-2026.md');
 // Also the README sample outputs (test/output/brand-2026.{pdf,docx}); image paths
 // are rewritten because the copy lives one folder below the fixture
@@ -553,17 +453,24 @@ fs.writeFileSync(brand2026Md, fs.readFileSync(FIXTURE, 'utf8')
 for (const format of ['pdf', 'docx', 'html']) {
   const out = path.join(OUT_DIR, `brand-2026.${format}`);
   try {
-    execFileSync(process.execPath, [CONVERT, brand2026Md, out, '--format', format, '--brand', '2026'], { stdio: 'pipe' });
+    execFileSync(process.execPath, [CONVERT, brand2026Md, out, '--format', format], { stdio: 'pipe' });
     assert(`2026 ${format}: file created`, fs.existsSync(out) && fs.statSync(out).size > 10000);
   } catch (e) {
     assert(`2026 ${format}: generation succeeds`, false, e.stderr?.toString() || e.message);
   }
+}
+{
+  const pdf = path.join(OUT_DIR, 'brand-2026.pdf');
+  assert('2026 pdf: valid PDF header', fs.existsSync(pdf) && fs.readFileSync(pdf).subarray(0, 5).toString() === '%PDF-');
 }
 
 try {
   const docXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/document.xml']).toString();
   const ftrXml = execFileSync('unzip', ['-p', path.join(OUT_DIR, 'brand-2026.docx'), 'word/footer*.xml']).toString();
   assert('2026 docx: Calistoga title in plum', docXml.includes('Calistoga') && docXml.includes('2F2450'));
+  // Regression: angle brackets in code blocks must survive (XML-escaped in docx)
+  assert('2026 docx: code-block angle brackets preserved', docXml.includes('&lt;http://data.europa.eu/s66#&gt;'),
+    'IRI in code block was dropped or unescaped');
   assert('2026 docx: subtitle and summary on cover',
     docXml.includes('>Second title line<') && docXml.includes('>Cover summary paragraph.<'));
   assert('2026 docx: classification in footer', ftrXml.includes('Confidential'));
@@ -615,13 +522,16 @@ try {
 }
 
 // ── 2026 Word renderer: mermaid, lists, entities, images ─────────────────────
-// Mermaid checks on the 2026 fixture output above, as for classic
+// Mermaid checks on the 2026 fixture output above
 try {
   const mermaid = mermaidDrawings(path.join(OUT_DIR, 'brand-2026.docx'));
   const left = mermaid.filter(d => d.para.includes('<w:jc w:val="left"/>'));
   assert('2026 docx mermaid: one drawing per diagram; the maxWidth=200 align=left one is left and ≤ 200px',
     mermaid.length === FIXTURE_MERMAIDS && left.length === 1 && left[0].cx <= 200 * 9525,
     `${mermaid.length} mermaid drawings, left extents: [${left.map(d => d.cx).join(', ')}]`);
+  assert('2026 docx mermaid: the two bare diagrams are centred',
+    FIXTURE_MERMAIDS === 3 && mermaid.filter(d => d.para.includes('<w:jc w:val="center"/>')).length === FIXTURE_MERMAIDS - 1,
+    `${FIXTURE_MERMAIDS} diagrams in the fixture`);
 } catch (e) {
   assert('2026 docx mermaid: extent/alignment checks', false, e.stderr?.toString() || e.message);
 }
@@ -971,17 +881,24 @@ try {
     /\/BaseFont \/[A-Z]{6}\+Roboto-Regular/.test(pdf) && /\/BaseFont \/[A-Z]{6}\+RobotoMono-Bold/.test(pdf));
 }
 
-// No flag and no frontmatter → 2026 (the default); `brand: classic` in frontmatter opts out
-for (const [label, fm, want2026] of [['default is 2026', '', true], ['frontmatter brand selects classic', 'brand: classic\n', false]]) {
-  try {
-    const fmMd = path.join(OUT_DIR, 'brand-fm.md');
-    fs.writeFileSync(fmMd, `---\ntitle: FM brand\n${fm}---\n\n## One\n\nText.\n`);
-    const out = path.join(OUT_DIR, 'brand-fm.docx');
-    execFileSync(process.execPath, [CONVERT, fmMd, out, '--format', 'docx'], { stdio: 'pipe' });
-    const xml = execFileSync('unzip', ['-p', out, 'word/document.xml']).toString();
-    assert(`brand: ${label}`, xml.includes('Calistoga') === want2026);
-  } catch (e) {
-    assert(`brand: ${label}`, false, e.stderr?.toString() || e.message);
+// The removed --brand option: 2026 is accepted and ignored, anything else is an error;
+// `brand: classic` in frontmatter warns and renders in the 2026 brand
+{
+  const { spawnSync } = require('child_process');
+  const md = path.join(OUT_DIR, 'brand-fm.md');
+  const out = path.join(OUT_DIR, 'brand-fm.html');
+  fs.writeFileSync(md, '---\ntitle: FM brand\nbrand: classic\n---\n\n## One\n\nText.\n');
+  const run = argv => { fs.rmSync(out, { force: true }); return spawnSync(process.execPath, [CONVERT, md, out, ...argv], { encoding: 'utf8' }); };
+  let r = run([]);
+  assert('brand: frontmatter brand: classic warns and still writes the 2026 file',
+    r.status === 0 && /classic brand was removed/.test(r.stderr) && fs.readFileSync(out, 'utf8').includes('Calistoga'), r.stderr);
+  r = run(['-b', '2026']);
+  assert('brand: -b 2026 accepted', r.status === 0 && fs.existsSync(out), r.stderr);
+  for (const value of ['classic', 'nope']) {
+    r = run(['--brand', value]);
+    assert(`brand: --brand ${value} exits 1 with the removal message`,
+      r.status === 1 && r.stderr.trim() === 'The classic brand was removed in version 2.0.0; cognizone-convert 1.8.0 is the last version with it.'
+      && !fs.existsSync(out), r.stderr);
   }
 }
 
@@ -1026,13 +943,6 @@ for (const [label, fm, want2026] of [['default is 2026', '', true], ['frontmatte
   }
 }
 
-try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, '/dev/null', '--brand', 'nope'], { stdio: 'pipe' });
-  assert('edge: unknown brand rejected', false, 'should have thrown');
-} catch {
-  assert('edge: unknown brand rejected', true);
-}
-
 // ── Parse and CLI review findings ────────────────────────────────────────────
 {
   const dir = path.join(OUT_DIR, 'review-a');
@@ -1052,10 +962,11 @@ try {
   {
     const p = parseMarkdown(write('no-h1.md', '---\ntitle: T\n---\n\n## Setup\n\n```bash\n# keep me\n```\n'));
     assert('review: "# line" in a code fence survives without a leading H1',
-      p.mdNoH1.includes('# keep me') && p.tokens.some(t => t.type === 'code' && t.text.includes('# keep me')));
+      p.tokens.some(t => t.type === 'code' && t.text.includes('# keep me')));
     const q = parseMarkdown(write('two-h1.md', '# Title\n\n## A\n\n# Part Two\n\n## B\n'));
     assert('review: leading H1 stripped, later H1 kept',
-      !q.mdNoH1.includes('# Title') && q.mdNoH1.includes('# Part Two') && q.tocEntries.map(e => e.text).join('|') === 'A|Part Two|B');
+      !q.tokens.some(t => t.type === 'heading' && t.text === 'Title')
+      && q.tokens.some(t => t.type === 'heading' && t.depth === 1 && t.text === 'Part Two') && q.tocEntries.map(e => e.text).join('|') === 'A|Part Two|B');
   }
 
   // JavaScript frontmatter is refused, not evaluated

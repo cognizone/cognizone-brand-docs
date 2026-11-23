@@ -25,9 +25,6 @@ Options:
   -f, --format <pdf|docx|html>  Output format (default: pdf, or the output
                                 file's extension when one is given).
                                 Folder input supports pdf and html.
-  -b, --brand <2026|classic>    Brand (default: 2026, or the document's
-                                \`brand:\` frontmatter field). classic is the
-                                old brand, kept for a short transition.
       --no-external-links       Render links to other files or sites (raw HTML
                                 <a href> too) as plain text; in-document
                                 #heading links still work.
@@ -49,7 +46,6 @@ Examples:
   cognizone-convert document.md --format html
   cognizone-convert document.md output.pdf
   cognizone-convert document.md -f docx
-  cognizone-convert document.md -b classic     # old brand
   cognizone-convert document.md -f docx --no-external-links
   cognizone-convert document.md -f docx --no-external-links --relative-links
   cognizone-convert specs/a.md -f docx --link-base "https://x.sharepoint.com/sites/s/Shared Documents/"

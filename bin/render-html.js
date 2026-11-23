@@ -2,13 +2,18 @@
 // Markdown → self-contained branded HTML.
 // No Puppeteer, no external binaries. Fonts and logo are embedded as base64.
 // Mermaid diagrams render client-side in the browser.
+// See reference/brand-2026-spec.md for the styling rules.
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { marked } = require('marked');
 const { parseMermaidOpts } = require('./mermaid-opts');
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
+const ICON_PATH = path.join(TEMPLATES_DIR, 'icon.png');
+
+const ADDRESS = 'Cognizone BV \u00B7 Avenue Arnaud Fraiteur 15-23, 1050 Ixelles, Belgium \u00B7 BE 0634.615.174';
 
 // ── Asset embedding ──────────────────────────────────────────────────────────
 
@@ -49,6 +54,7 @@ function dataUri(filePath) {
 function buildFontsCss() {
   const fontsDir = path.join(TEMPLATES_DIR, 'fonts');
   const entries = [
+    { file: 'Calistoga-Regular.ttf',         family: 'Calistoga',   weight: '400',     style: 'normal' },
     { file: 'Roboto[wdth,wght].ttf',        family: 'Roboto',      weight: '100 900', style: 'normal' },
     { file: 'Roboto-Italic[wdth,wght].ttf', family: 'Roboto',      weight: '100 900', style: 'italic' },
     { file: 'RobotoMono[wght].ttf',          family: 'Roboto Mono', weight: '100 900', style: 'normal' },
@@ -65,10 +71,14 @@ function buildFontsCss() {
 
 // Resolve an image path from the markdown source to an absolute file URI or
 // embedded data URI. Relative paths are resolved against the document's dir.
+// The src may be URL-encoded (pic%20one.png for `pic one.png`): try the decoded
+// name first, then the literal one.
 function resolveImageSrc(src, inputDir) {
   if (/^(https?:|data:|file:)/i.test(src)) return src;
-  const absPath = path.resolve(inputDir, src);
-  if (!fs.existsSync(absPath)) return src;
+  let decoded = src;
+  try { decoded = decodeURIComponent(src); } catch { /* not URL-encoded */ }
+  const absPath = [decoded, src].map(p => path.resolve(inputDir, p)).find(p => fs.existsSync(p));
+  if (!absPath) return src;
   // Only embed recognised image types. Anything else (e.g. a .txt or a key
   // file) is left as-is so we never inline arbitrary file bytes.
   const ext = path.extname(absPath).toLowerCase();
@@ -83,8 +93,8 @@ function resolveImageSrc(src, inputDir) {
 // their relative src paths as data URIs too.
 function embedRawImages(html, inputDir) {
   return html.replace(
-    /(<img\s[^>]*src=")(?!data:|https?:|file:)([^"]+)(")/gi,
-    (_m, pre, src, post) => pre + resolveImageSrc(src, inputDir) + post,
+    /(<img\s[^>]*src=)(["'])(?!data:|https?:|file:)((?:(?!\2).)+)\2/gi,
+    (_m, pre, q, src) => pre + q + resolveImageSrc(src, inputDir) + q,
   );
 }
 
@@ -96,13 +106,34 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function coverPageHtml(doc) {
-  const { id, title, type, status, version, date, author, client, project } = doc;
-  const logoUri = dataUri(path.join(TEMPLATES_DIR, 'logo.png'));
+// H2-level section numbers are a chapter label ("CHAPTER 01", like the reference's
+// "ITEM 01"); deeper ones stay "1.1". Merged master-TOC document entries pass a
+// ready-made "DOCUMENT 01" label through unchanged.
+// Section numbers are digits and dots only, so the markup is safe. Roboto Mono gives
+// the dot a full digit-wide cell; .num-dot pulls it in so `1.1` does not read as `1 . 1`
+function displayNumber(number, level) {
+  if (level === 2 && /^\d+$/.test(number)) return `CHAPTER ${number.padStart(2, '0')}`;
+  return number.replace(/\./g, '<span class="num-dot">.</span>');
+}
+
+function lockupHtml() {
+  return `<div class="cover-lockup"><img src="${dataUri(ICON_PATH)}" alt=""><span>Cognizone</span></div>`;
+}
+
+function coverBottomHtml(date, classification) {
+  const dateLine = [date, classification].filter(Boolean).map(escapeHtml).join(' · ');
+  return `<div class="cover-bottom">
+    <p class="cover-address">${escapeHtml(ADDRESS)}</p>
+    ${dateLine ? `<p class="cover-dateline">${dateLine}</p>` : ''}
+  </div>`;
+}
+
+function coverPageHtml(doc, attrs = '') {
+  const { id, title, subtitle, summary, type, status, version, date, author, client, project, classification } = doc;
+  const eyebrow = ['Cognizone', type || id].filter(Boolean).join(' / ');
 
   const rows = [
     ['ID', id],
-    ['Document title', title],
     ['Type', type],
     ['Status', status],
     ['Version', version],
@@ -119,17 +150,16 @@ function coverPageHtml(doc) {
     : '';
 
   return `
-<div class="cover-page">
-  <div class="cover-logo-block">
-    <img class="cover-logo" src="${logoUri}" alt="Cognizone">
+<div class="cover-page"${attrs}>
+  ${lockupHtml()}
+  <div class="cover-eyebrow">${escapeHtml(eyebrow)}</div>
+  <div class="cover-title-block">
+    <div class="cover-title">${escapeHtml(title)}</div>
+    ${subtitle ? `<div class="cover-subtitle">${escapeHtml(subtitle)}</div>` : ''}
   </div>
-  <div class="cover-contact">
-    <a href="mailto:info@cogni.zone">info@cogni.zone</a>
-    <a href="https://cogni.zone">cogni.zone</a>
-  </div>
-  ${id ? `<div class="cover-id">${escapeHtml(id)}</div>` : ''}
-  <div class="cover-title">${escapeHtml(title)}</div>
+  ${summary ? `<p class="cover-summary">${escapeHtml(summary)}</p>` : ''}
   ${metaTable}
+  ${coverBottomHtml(date, classification)}
 </div>`;
 }
 
@@ -137,33 +167,27 @@ function tocHtml(tocEntries, idPrefix = '') {
   if (!tocEntries.length) return '';
 
   // Build nested list from flat entries (H2 → H4). Mirrors buildToc in
-  // render-pdf.js: a stack tracks open nesting levels so every <li> and <ul>
-  // is closed exactly once.
-  const lines = ['<nav id="TOC"><h2>Contents</h2>'];
-  const stack = [];
-  let prev = 0;
+  // render-pdf.js: a stack tracks open nesting levels so every <li> and
+  // <ul> is closed exactly once, even when a level is skipped (H2 → H4) or the
+  // document starts deeper than H2.
+  const lines = ['<nav id="TOC"><div class="toc-label">CONTENTS</div>'];
+  const stack = [];   // levels of the open <ul>s; each holds one open <li>
 
   for (const entry of tocEntries) {
     const level = Math.max(2, Math.min(entry.level, 4));
-    if (prev === 0) {
-      lines.push('<ul>');
-      stack.push(level);
-    } else if (level > prev) {
-      lines.push('<ul>');
-      stack.push(level);
-    } else if (level === prev) {
+    while (stack.length && stack[stack.length - 1] > level) {
+      lines.push('</li></ul>');
+      stack.pop();
+    }
+    if (stack.length && stack[stack.length - 1] === level) {
       lines.push('</li>');
     } else {
-      while (stack.length && stack[stack.length - 1] > level) {
-        lines.push('</li></ul>');
-        stack.pop();
-      }
-      lines.push('</li>');
+      lines.push('<ul>');
+      stack.push(level);
     }
     const anchor = `${idPrefix}${entry.id}`;
-    const prefix = entry.number ? `${entry.number} ` : '';
-    lines.push(`<li><a href="#${anchor}"><span class="toc-num">${escapeHtml(prefix)}</span><span class="toc-title">${escapeHtml(entry.text)}</span></a>`);
-    prev = level;
+    const num = entry.number ? displayNumber(entry.number, level) : '';
+    lines.push(`<li><a href="#${anchor}"><span class="toc-num">${num}</span><span class="toc-title">${escapeHtml(entry.text)}</span></a>`);
   }
 
   while (stack.length) { lines.push('</li></ul>'); stack.pop(); }
@@ -188,7 +212,7 @@ function bodyHtml(parsed, idPrefix = '') {
     heading(text, depth) {
       const meta = headingMeta[headingIdx++] || {};
       const { number, id } = meta;
-      const prefix = number ? `<span class="section-num">${number}&nbsp;</span>` : '';
+      const prefix = number ? `<span class="section-num">${displayNumber(number, depth)}</span> ` : '';
       const fullId = `${idPrefix}${id || ''}`;
       return `<h${depth} id="${fullId}">${prefix}${text}</h${depth}>\n`;
     },
@@ -205,7 +229,9 @@ function bodyHtml(parsed, idPrefix = '') {
         return `<pre class="mermaid" style="${style}">${escaped}</pre>\n`;
       }
       const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const cls = lang ? ` class="language-${lang}"` : '';
+      // the class takes the fence info string's first word only
+      const word = (lang || '').match(/^\S*/)[0];
+      const cls = word ? ` class="language-${escapeHtml(word)}"` : '';
       return `<pre><code${cls}>${escaped}</code></pre>\n`;
     },
 
@@ -227,16 +253,17 @@ function bodyHtml(parsed, idPrefix = '') {
 
 const STYLES = `
 :root {
-  --green:          #058775;
-  --dark:           #353744;
-  --dark2:          #272727;
-  --gray:           #666666;
-  --light-green-bg: #E8F5F3;
-  --mono-green:     #188038;
-  --white:          #ffffff;
-  --border:         #BFBFBF;
-  --meta-label-bg:  #EAF0F8;
-  --link-blue:      #0563C1;
+  --plum:      #2F2450;
+  --ink:       #2B2340;
+  --plum-soft: #4A3A78;
+  --pink-deep: #C85A8A;
+  --pink:      #E17B9E;
+  --muted:     #6B6185;
+  --blue:      #3D6BB8;
+  --sand:      #F3EBDE;
+  --cream:     #FBF6F1;
+  --rule:      #E2D8CB;
+  --white:     #FFFFFF;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -245,12 +272,12 @@ html { scroll-behavior: smooth; scroll-padding-top: 56px; }
 
 body {
   font-family: 'Roboto', sans-serif;
-  font-size: 10pt;
-  color: var(--dark);
-  line-height: 1.5;
+  font-size: 9.5pt;
+  color: var(--ink);
+  line-height: 1.2;
   margin: 0;
   padding: 0;
-  background: #f4f4f4;
+  background: var(--cream);
 }
 
 /* ── Layout ─────────────────────────────────────────────────────────────────*/
@@ -259,23 +286,34 @@ body {
   position: sticky;
   top: 0;
   z-index: 100;
-  background: #fff;
-  border-bottom: 2px solid var(--green);
+  background: var(--white);
+  border-bottom: 0.5pt solid var(--rule);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 32px;
+  padding: 10px 32px;
   gap: 16px;
 }
 
-.doc-header img {
-  height: 28px;
+.doc-header .header-brand {
+  display: flex;
+  align-items: center;
+  gap: 6.4px;                     /* half the icon height, as the brand lockup */
+  flex-shrink: 0;
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: var(--plum);
+}
+
+.doc-header .header-brand img {
   width: auto;
+  height: 12.8px;                 /* icon is cropped to its nodes: same size as the old 16px square */
 }
 
 .doc-header .header-title {
-  font-size: 9pt;
-  color: var(--gray);
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7pt;
+  color: var(--muted);
   text-align: right;
   white-space: nowrap;
   overflow: hidden;
@@ -283,107 +321,155 @@ body {
 }
 
 .doc-footer {
-  background: #fff;
-  border-top: 2px solid var(--green);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 32px;
-  font-size: 9pt;
-  color: var(--gray);
-  margin-top: 48px;
+  gap: 16px;
+  padding: 16px 32px 24px;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7pt;
+  color: var(--muted);
+}
+
+.doc-footer .footer-brand {
+  color: var(--plum);
 }
 
 .page-content {
   max-width: 820px;
-  margin: 0 auto;
-  background: #fff;
-  padding: 32px 48px 48px;
-  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  margin: 32px auto 0;
+  background: var(--white);
+  padding: 40px 56px 56px;
+  box-shadow: 0 1px 4px rgba(47, 36, 80, .08);
   min-height: calc(100vh - 120px);
 }
 
 /* ── Cover page ─────────────────────────────────────────────────────────────*/
 
 .cover-page {
-  padding-top: 24px;
-  margin-bottom: 48px;
+  padding-top: 20pt;
+  margin-bottom: 56px;
+  padding-bottom: 32px;
+  border-bottom: 0.5pt solid var(--rule);
 }
 
-.cover-logo-block {
-  margin-bottom: 24px;
-}
-
-.cover-logo {
-  height: 36px;
-  width: auto;
-  max-width: 220px;
-}
-
-.cover-contact {
+.cover-lockup {
   display: flex;
-  flex-direction: column;
-  gap: 2pt;
-  margin-bottom: 32px;
-  align-items: flex-end;
-  text-align: right;
+  align-items: center;
+  margin: 0 0 56pt 0;
+  font-size: 20pt;
+  font-weight: 700;
+  color: var(--plum);
+  line-height: 1;
 }
 
-.cover-contact a {
+.cover-lockup img {
+  width: auto;
+  height: 51.25px;                /* icon is cropped to its nodes: same size as the old 64px square */
+  margin-right: 25.6px;           /* half the icon height, as the brand lockup */
+}
+
+.num-dot {
+  margin: 0 -0.15em;              /* Roboto Mono's dot cell is digit-wide: pull it in */
+}
+
+.cover-eyebrow {
+  font-family: 'Roboto Mono', monospace;
   font-size: 9pt;
-  color: var(--link-blue);
-  text-decoration: none;
+  letter-spacing: 3pt;
+  text-transform: uppercase;
+  color: var(--pink-deep);
+  margin: 0 0 12pt 0;
 }
 
-.cover-id {
-  font-size: 13pt;
-  font-weight: 700;
-  color: var(--green);
-  letter-spacing: 0.05em;
-  margin: 0 0 8px 0;
+.cover-title-block {
+  margin: 0 0 20pt 0;
 }
 
-.cover-title {
-  font-size: 22pt;
-  font-weight: 700;
-  color: var(--dark);
-  margin: 0 0 24px 0;
-  line-height: 1.2;
+.cover-title,
+.cover-subtitle {
+  font-family: 'Calistoga', serif;
+  font-size: 32pt;
+  font-weight: 400;
+  line-height: 1.1;
+  color: var(--plum);
+}
+
+.cover-subtitle {
+  color: var(--pink-deep);
+}
+
+.cover-summary {
+  font-size: 12pt;
+  line-height: 1.33;
+  color: var(--plum-soft);
+  margin: 0 0 30pt 0;
 }
 
 .cover-meta-table {
-  width: 100%;
+  width: 60%;
   border-collapse: collapse;
-  font-size: 10pt;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.cover-meta-table tbody tr:nth-child(n) {
+  background-color: transparent;  /* no zebra on the cover table */
 }
 
 .cover-meta-table td {
-  padding: 6pt 10pt;
-  border: 1px solid var(--border);
+  padding: 3pt 6pt;
+  border: none;
+  border-top: 0.5pt solid var(--rule);
+  border-bottom: 0.5pt solid var(--rule);
   vertical-align: top;
+  font-size: 9.5pt;
+  color: var(--ink);
 }
 
 .cover-meta-table .meta-label {
-  font-weight: 700;
-  background-color: var(--meta-label-bg);
-  width: 30%;
+  width: 32%;
+  background-color: var(--sand);
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7.5pt;
+  letter-spacing: 1pt;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.cover-bottom {
+  margin-top: 48pt;
+}
+
+.cover-address {
+  font-size: 8.5pt;
+  color: var(--muted);
+  margin: 0 0 3pt 0;
+}
+
+.cover-dateline {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  color: var(--muted);
+  margin: 0;
 }
 
 /* ── TOC ────────────────────────────────────────────────────────────────────*/
 
 #TOC {
-  font-size: 10pt;
   margin-bottom: 48px;
   padding-top: 8px;
 }
 
-#TOC h2 {
-  font-size: 13pt;
+#TOC .toc-label {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
   font-weight: 700;
-  color: var(--dark);
-  margin-top: 0;
-  padding-bottom: 3pt;
-  border-bottom: 0.25px solid var(--dark);
+  letter-spacing: 3pt;
+  color: var(--pink-deep);
+  margin: 0 0 10pt 0;
 }
 
 #TOC ul {
@@ -392,90 +478,152 @@ body {
   margin: 0;
 }
 
-#TOC > ul > li {
-  margin-bottom: 6pt;
+#TOC li {
+  margin: 0;
 }
 
-#TOC ul ul {
-  padding-left: 16pt;
-  margin-top: 2pt;
-}
-
-#TOC ul ul li {
-  margin-bottom: 2pt;
+#TOC li::before {
+  content: none;
 }
 
 #TOC a {
   display: flex;
   align-items: baseline;
   text-decoration: none;
-  color: var(--dark);
-  gap: 6px;
 }
 
-#TOC > ul > li > a {
-  font-weight: 700;
-}
-
-#TOC ul ul a {
-  font-weight: 400;
-  color: var(--gray);
-}
-
-#TOC a:hover {
-  color: var(--green);
-}
-
-.toc-num {
-  flex-shrink: 0;
-  color: var(--gray);
-  font-size: 9pt;
+#TOC a:hover .toc-title {
+  color: var(--blue);
 }
 
 .toc-title {
   flex: 1;
+  min-width: 0;
+}
+
+/* Top-level entries (H2): "CHAPTER 01" in a 26mm number column, ruled below */
+#TOC > ul > li > a {
+  padding-bottom: 3pt;
+  border-bottom: 0.25pt solid var(--rule);
+  margin-bottom: 7pt;
+}
+
+#TOC > ul > li > a .toc-num {
+  flex: 0 0 26mm;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8pt;
+  font-weight: 700;
+  color: var(--pink-deep);
+}
+
+#TOC > ul > li > a .toc-title {
+  font-size: 10.5pt;
+  color: var(--plum);
+}
+
+/* Sub-entries (H3 and deeper): indented to the text column, no rule */
+#TOC ul ul {
+  padding-left: 26mm;
+}
+
+#TOC ul ul ul {
+  padding-left: 9mm;
+  margin-top: 3pt;
+}
+
+/* Same gap before the next chapter as after a chapter's rule */
+#TOC > ul > li > ul {
+  margin-bottom: 11pt;
+}
+
+#TOC ul ul li {
+  margin-bottom: 3pt;
+}
+
+#TOC ul ul .toc-num {
+  flex: 0 0 auto;
+  min-width: 9mm;
+  padding-right: 4pt;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 7.5pt;
+  color: var(--muted);
+}
+
+#TOC ul ul .toc-title {
+  font-size: 9.5pt;
+  color: var(--ink);
 }
 
 /* ── Headings ───────────────────────────────────────────────────────────────*/
 
 h1, h2, h3, h4, h5, h6 {
-  margin-top: 1.4em;
-  margin-bottom: 0.4em;
+  break-after: avoid;
+  break-inside: avoid;
 }
 
+/* H2: mono eyebrow number ("01") above a Calistoga heading */
 h2 {
-  font-size: 13pt;
+  font-family: 'Calistoga', serif;
+  font-size: 20pt;
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--plum);
+  margin: 24pt 0 12pt 0;
+}
+
+h2 .section-num {
+  display: block;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 8.5pt;
   font-weight: 700;
-  color: var(--dark);
-  padding-bottom: 3pt;
-  border-bottom: 0.25px solid var(--dark);
+  letter-spacing: 1pt;
+  line-height: 1.2;
+  color: var(--pink-deep);
+  margin-bottom: 2pt;
 }
 
 h3 {
   font-size: 12pt;
   font-weight: 700;
-  color: var(--green);
+  color: var(--plum);
+  margin: 14pt 0 12pt 0;
+  padding-bottom: 3pt;
+  border-bottom: 0.75pt solid var(--pink);
 }
 
-h4 {
-  font-size: 11pt;
+h3 .section-num {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 10pt;
   font-weight: 700;
-  color: var(--dark2);
+  color: var(--pink-deep);
+  margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
 
-.section-num {
-  color: var(--gray);
-  font-weight: inherit;
+h4, h5, h6 {
+  font-size: 10.5pt;
+  font-weight: 700;
+  color: var(--plum-soft);
+  margin: 10pt 0 4pt 0;
+}
+
+h4 .section-num,
+h5 .section-num,
+h6 .section-num {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 9pt;
+  font-weight: 700;
+  color: var(--pink-deep);
+  margin-right: 6pt;              /* + the title's space ≈ a 9pt gap */
 }
 
 /* ── Body text ──────────────────────────────────────────────────────────────*/
 
-p { margin-top: 0; margin-bottom: 8pt; }
+p { margin-top: 0; margin-bottom: 6pt; }
 
-a { color: var(--green); text-decoration: none; }
+a { color: var(--blue); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-hr { border: none; border-top: 1px solid var(--border); margin: 12pt 0; }
+hr { border: none; border-top: 0.5pt solid var(--rule); margin: 10pt 0; }
 
 strong { font-weight: 700; }
 em { font-style: italic; }
@@ -484,25 +632,27 @@ em { font-style: italic; }
 
 code {
   font-family: 'Roboto Mono', monospace;
-  font-size: 9pt;
-  color: var(--mono-green);
-  background-color: #f5f5f5;
-  padding: 1px 4px;
+  font-size: 8.5pt;
+  color: var(--pink-deep);
+  background-color: var(--sand);
+  padding: 0.5pt 3pt;
   border-radius: 2px;
 }
 
 pre {
-  background-color: #f5f5f5;
-  border-left: 3px solid var(--green);
-  padding: 10pt 12pt;
-  margin: 8pt 0;
+  background-color: var(--cream);
+  border: 0.5pt solid var(--rule);
+  border-left: 3pt solid var(--plum);
+  padding: 6pt;
+  margin: 6pt 0 8pt 0;
   overflow-x: auto;
 }
 
 pre code {
   font-family: 'Roboto Mono', monospace;
-  font-size: 8.5pt;
-  color: var(--mono-green);
+  font-size: 8pt;
+  line-height: 1.35;
+  color: var(--plum);
   background: none;
   padding: 0;
   border-radius: 0;
@@ -510,8 +660,8 @@ pre code {
 
 pre.mermaid {
   background: none;
-  border-left: none;
-  padding: 16pt 0;
+  border: none;
+  padding: 12pt 0;
   text-align: center;
   display: flex;
   justify-content: center;
@@ -525,51 +675,86 @@ pre.mermaid svg {
 /* ── Blockquote ─────────────────────────────────────────────────────────────*/
 
 blockquote {
-  margin: 8pt 0;
-  padding: 6pt 12pt;
-  border-left: 4px solid var(--green);
+  margin: 6pt 0 8pt 3mm;
+  padding: 6pt 8pt;
+  border-left: 3pt solid var(--pink-deep);
+  background-color: var(--sand);
   font-style: italic;
-  color: #444;
-  background: none;
+  color: var(--plum-soft);
 }
 
-blockquote p { margin-bottom: 0; }
+blockquote p,
+blockquote li {
+  color: var(--plum-soft);
+  font-style: italic;
+}
+
+blockquote > :last-child { margin-bottom: 0; }
 
 /* ── Tables ─────────────────────────────────────────────────────────────────*/
 
 table {
   width: 100%;
   border-collapse: collapse;
-  margin: 10pt 0;
-  font-size: 9.5pt;
+  margin: 8pt 0 10pt 0;
+  font-size: 8.5pt;
+  line-height: 1.05;
 }
 
-thead tr { background-color: var(--green); color: var(--white); }
+thead tr { background-color: var(--plum); color: var(--white); }
 
 thead th {
   font-weight: 700;
-  padding: 6pt 8pt;
-  border: 1px solid var(--border);
+  padding: 3pt 4.5pt;
+  border: none;
+  border-bottom: 0.5pt solid var(--rule);
   text-align: left;
+  vertical-align: bottom;
 }
 
 /* Honour column alignment from the markdown delimiter row (:---:, ---:) */
 thead th[align="center"] { text-align: center; }
 thead th[align="right"] { text-align: right; }
 
-tbody tr:nth-child(even) { background-color: var(--light-green-bg); }
 tbody tr:nth-child(odd)  { background-color: var(--white); }
+tbody tr:nth-child(even) { background-color: var(--cream); }
 
 tbody td {
-  padding: 5pt 8pt;
-  border: 1px solid var(--border);
+  padding: 3pt 4.5pt;
+  border: none;
+  border-bottom: 0.5pt solid var(--rule);
   vertical-align: top;
 }
 
 /* ── Lists ──────────────────────────────────────────────────────────────────*/
 
-ul, ol { margin: 4pt 0 8pt 0; padding-left: 20pt; }
-li { margin-bottom: 3pt; line-height: 1.5; }
+/* 6.35mm indent per level, 4.2mm hanging; bullets/numbers in pink deep */
+ul, ol { margin: 0 0 6pt 0; padding-left: 6.35mm; }
+li { margin-bottom: 4pt; line-height: 1.2; }
+li > ul, li > ol { margin-top: 4pt; margin-bottom: 0; }
+li > p { margin-bottom: 4pt; }
+
+ul { list-style: none; }
+ul > li { position: relative; }
+ul > li::before {
+  content: '•';
+  position: absolute;
+  left: -4.2mm;
+  color: var(--pink-deep);
+  font-style: normal;
+  /* Roboto's • is 0.21 em across, barely bigger than a full stop: 1.6×. The line height
+     drops its centre (0.37 em up) onto the text's x-height middle (0.26 em up) */
+  font-size: 1.6em;
+  line-height: 0.9;
+}
+:is(ul, ol) ul > li::before { content: '◦'; font-size: 1em; line-height: 1.2; }
+:is(ul, ol) :is(ul, ol) ul > li::before { content: '–'; font-size: 1em; line-height: 1.2; }
+
+ol { list-style-type: decimal; }
+:is(ul, ol) ol { list-style-type: lower-alpha; }
+:is(ul, ol) :is(ul, ol) ol { list-style-type: lower-roman; }
+ol > li { padding-left: 1mm; }
+ol > li::marker { color: var(--pink-deep); font-style: normal; }
 
 /* ── Images ─────────────────────────────────────────────────────────────────*/
 
@@ -577,7 +762,7 @@ img { max-width: 100%; height: auto; }
 
 /* ── Merged doc dividers ────────────────────────────────────────────────────*/
 
-.doc-section { border-top: 3px solid var(--green); padding-top: 32px; margin-top: 48px; }
+.doc-section { border-top: 3pt solid var(--plum); padding-top: 32px; margin-top: 56px; }
 /* The first document section is preceded by the master cover + TOC (not another
    .doc-section), so it should not carry the inter-document divider. Match the
    first section only — any section directly following another keeps the rule. */
@@ -588,37 +773,50 @@ img { max-width: 100%; height: auto; }
 .master-cover-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 24px;
-  font-size: 9.5pt;
+  margin-top: 0;
+  font-size: 8.5pt;
 }
 
 .master-cover-table th {
-  background: var(--green);
-  color: #fff;
+  background: var(--plum);
+  color: var(--white);
   font-weight: 700;
-  padding: 6pt 8pt;
-  border: 1px solid var(--border);
+  padding: 3pt 4.5pt;
+  border: none;
   text-align: left;
 }
 
 .master-cover-table td {
-  padding: 5pt 8pt;
-  border: 1px solid var(--border);
+  padding: 3pt 4.5pt;
+  border: none;
+  border-bottom: 0.5pt solid var(--rule);
   vertical-align: top;
 }
 
-.master-cover-table tr:nth-child(even) td { background: var(--light-green-bg); }
+.master-cover-table td:first-child {
+  width: 1%;
+  font-family: 'Roboto Mono', monospace;
+  color: var(--pink-deep);
+  white-space: nowrap;
+}
+
+.master-cover-table tr:nth-child(even) td { background: var(--cream); }
 
 @media (max-width: 860px) {
-  .page-content { padding: 20px 16px 32px; }
-  .doc-header   { padding: 6px 16px; }
-  .doc-footer   { padding: 8px 16px; }
+  .page-content { padding: 20px 16px 32px; margin-top: 0; }
+  .doc-header   { padding: 8px 16px; }
+  .doc-footer   { padding: 16px; }
+  .cover-meta-table { width: 100%; }
 }
 
 @media print {
-  body { background: #fff; }
+  body { background: var(--white); }
   .doc-header { position: static; }
-  .page-content { box-shadow: none; padding: 0; max-width: none; }
+  .page-content { box-shadow: none; padding: 0; max-width: none; margin: 0; }
+  .cover-page { border-bottom: none; break-after: page; }
+  #TOC { break-after: page; }
+  table, pre, .mermaid { break-inside: avoid; }
+  thead { display: table-header-group; }
 }
 `;
 
@@ -626,24 +824,27 @@ img { max-width: 100%; height: auto; }
 // the raw markdown: a 4-backtick fence showing a ```mermaid example is NOT a
 // mermaid diagram, and ~~~mermaid fences must still count. We check the fenced
 // code tokens' lang directly (parseMermaidOpts is avoided here so its stderr
-// warnings on invalid opts don't fire during mere detection).
+// warnings on invalid opts don't fire during mere detection). Fences nested in
+// blockquotes and list items render as diagrams too, so the walk recurses.
 function docHasMermaid(parsed) {
-  return (parsed.tokens || []).some(
-    t => t.type === 'code' && /^mermaid\b/.test((t.lang || '').trim()),
-  );
+  const walk = list => (list || []).some(t =>
+    (t.type === 'code' && /^mermaid\b/.test((t.lang || '').trim()))
+    || walk(t.tokens)
+    || (t.items || []).some(i => walk(i.tokens)));
+  return walk(parsed.tokens);
 }
 
 // ── Mermaid script ───────────────────────────────────────────────────────────
 
 // Inline the mermaid UMD bundle so diagrams render offline — the HTML stays
 // fully self-contained. Only included when the document has mermaid blocks.
-function mermaidScript() {
+function mermaidScript(nonce) {
   const bundle = fs.readFileSync(require.resolve('mermaid/dist/mermaid.min.js'), 'utf8')
     // A literal </script in the bundle would prematurely close our inline tag.
     .replace(/<\/script/gi, '<\\/script');
   return `
-<script>${bundle}</script>
-<script>
+<script nonce="${nonce}">${bundle}</script>
+<script nonce="${nonce}">
   mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
   mermaid.run({ querySelector: '.mermaid' });
 </script>`;
@@ -651,11 +852,16 @@ function mermaidScript() {
 
 // ── Page template ────────────────────────────────────────────────────────────
 
+// Markdown may carry raw HTML (<script>, on*= handlers, javascript: links,
+// <iframe>/<object>). The policy lets only our own nonce-carrying scripts run.
+// Images, styles and fonts stay unrestricted: they are data: URIs and inline
+// styles throughout, and mermaid injects styles.
 function htmlPage({ title, headerTitle, footerTitle, fontsCss, bodyContent, hasMermaid }) {
-  const logoUri = dataUri(path.join(TEMPLATES_DIR, 'logo.png'));
+  const nonce = crypto.randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}'; object-src 'none'; frame-src 'none'">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
@@ -666,7 +872,7 @@ ${STYLES}
 </head>
 <body>
 <header class="doc-header">
-  <img src="${logoUri}" alt="Cognizone">
+  <span class="header-brand"><img src="${dataUri(ICON_PATH)}" alt="">Cognizone</span>
   <span class="header-title">${escapeHtml(headerTitle)}</span>
 </header>
 <div class="page-content">
@@ -674,8 +880,9 @@ ${bodyContent}
 </div>
 <footer class="doc-footer">
   <span>${escapeHtml(footerTitle)}</span>
+  <span class="footer-brand">Cognizone</span>
 </footer>
-${hasMermaid ? mermaidScript() : ''}
+${hasMermaid ? mermaidScript(nonce) : ''}
 </body>
 </html>`;
 }
@@ -695,7 +902,7 @@ function renderHtml(parsed, outputFile) {
   const html = htmlPage({
     title: parsed.title,
     headerTitle: parsed.headerTitle,
-    footerTitle: parsed.footerTitle,
+    footerTitle: [parsed.classification, parsed.client, parsed.project].filter(Boolean).join(' \u00B7 '),
     fontsCss,
     bodyContent,
     hasMermaid,
@@ -710,32 +917,30 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   const fontsCss = buildFontsCss();
   const folderName = path.basename(inputDir);
   const hasMermaid = parsedDocs.some(docHasMermaid);
-  const logoUri = dataUri(path.join(TEMPLATES_DIR, 'logo.png'));
-
   // Master cover
   const masterCoverRows = parsedDocs.map((d, i) =>
-    `<tr><td>${i + 1}</td><td>${escapeHtml(d.id)}</td><td>${escapeHtml(d.title)}</td></tr>`
+    `<tr><td>${String(i + 1).padStart(2, '0')}</td><td>${escapeHtml(d.id)}</td><td><a href="#doc-${i}-cover">${escapeHtml(d.title)}</a></td></tr>`
   ).join('');
 
   const masterCover = `
 <div class="cover-page">
-  <div class="cover-logo-block"><img class="cover-logo" src="${logoUri}" alt="Cognizone"></div>
-  <div class="cover-contact">
-    <a href="mailto:info@cogni.zone">info@cogni.zone</a>
-    <a href="https://cogni.zone">cogni.zone</a>
+  ${lockupHtml()}
+  <div class="cover-eyebrow">COGNIZONE</div>
+  <div class="cover-title-block">
+    <div class="cover-title">${escapeHtml(folderName)}</div>
   </div>
-  <div class="cover-title">${escapeHtml(folderName)}</div>
   <table class="master-cover-table">
     <thead><tr><th>#</th><th>ID</th><th>Title</th></tr></thead>
     <tbody>${masterCoverRows}</tbody>
   </table>
+  ${coverBottomHtml('', '')}
 </div>`;
 
   // Master TOC: each document is a top-level H2 entry; its headings are nested below
   const allTocEntries = [];
   parsedDocs.forEach((d, i) => {
     const docPrefix = `doc-${i}-`;
-    allTocEntries.push({ level: 2, text: d.title, id: `${docPrefix}cover`, number: String(i + 1) });
+    allTocEntries.push({ level: 2, text: d.title, id: `${docPrefix}cover`, number: `DOCUMENT ${String(i + 1).padStart(2, '0')}` });
     d.tocEntries.forEach(e => allTocEntries.push({ ...e, level: Math.min(e.level + 1, 4), id: `${docPrefix}${e.id}`, number: `${i + 1}.${e.number}` }));
   });
 
@@ -744,11 +949,7 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   // Per-document sections
   const docSections = parsedDocs.map((d, i) => {
     const docPrefix = `doc-${i}-`;
-    const docCover = `
-<div class="cover-page" id="${docPrefix}cover">
-  ${d.id ? `<div class="cover-id">${escapeHtml(d.id)}</div>` : ''}
-  <div class="cover-title">${escapeHtml(d.title)}</div>
-</div>`;
+    const docCover = coverPageHtml(d, ` id="${docPrefix}cover"`);
     const docToc = tocHtml(d.tocEntries, docPrefix);
     const docBody = bodyHtml(d, docPrefix);
     return `<div class="doc-section">${docCover}${docToc}<div class="body-content">${docBody}</div></div>`;

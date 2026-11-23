@@ -137,21 +137,19 @@ function parseMarkdown(inputFile, opts = {}) {
   const author      = String(fm.author  || '');
   const client      = String(fm.client  || '');
   const project     = String(fm.project || '');
-  // 2026 brand cover/footer fields (ignored by the classic brand)
+  // cover/footer fields; `brand` only to warn about the removed classic brand
   const subtitle       = String(fm.subtitle       || '');
   const summary        = String(fm.summary        || '');
   const classification = String(fm.classification || '');
   const brand          = String(fm.brand          || '');
   const headerTitle = id ? `${id} - ${title}` : title;
-  const footerTitle = [client, project].filter(Boolean).join(' \u00B7 ');
 
   // Lex into token tree; strip the title H1 (cover page only), but only when it is
   // the first block (after any raw HTML): a "# comment" in a code fence or a later H1 stays.
   const tokens = marked.lexer(mdBody);
-  let mdNoH1 = mdBody;  // body text without the title H1 (the classic PDF renderer re-lexes it)
   const first = tokens.findIndex(t => t.type !== 'space' && t.type !== 'html');  // a leading comment or logo block may precede the title
   if (first !== -1 && tokens[first].type === 'heading' && tokens[first].depth === 1) {
-    mdNoH1 = mdBody.replace(tokens.splice(first, 1)[0].raw, () => '');
+    tokens.splice(first, 1);
   }
   rewriteLinks(tokens, { ...opts, inputDir: path.dirname(path.resolve(inputFile)) });
 
@@ -201,9 +199,9 @@ function parseMarkdown(inputFile, opts = {}) {
   walkHeadings(tokens);
 
   return {
-    fm, title, id, type, status, version, date, author, client, project, headerTitle, footerTitle,
+    fm, title, id, type, status, version, date, author, client, project, headerTitle,
     subtitle, summary, classification, brand,
-    inputDir: path.dirname(inputFile), tokens, tocEntries, mdNoH1,
+    inputDir: path.dirname(inputFile), tokens, tocEntries,
   };
 }
 

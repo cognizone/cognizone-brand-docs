@@ -11,11 +11,12 @@ const { parseMarkdown } = require('./parse');
 // ── Parse arguments ──────────────────────────────────────────────────────────
 const args = process.argv.slice(2);
 let format;
-let brandArg;
 let stripExternalLinks = false;
 let relativeLinks = false;
 let linkBase;
 let inputArg, outputArg;
+
+const CLASSIC_REMOVED = 'The classic brand was removed in version 2.0.0; cognizone-convert 1.8.0 is the last version with it.';
 
 function usageError(msg) {
   console.error(`${msg} See cognizone-convert --help.`);
@@ -28,7 +29,13 @@ for (let i = 0; i < args.length; i++) {
     const value = args[++i];
     if (value === undefined || value.startsWith('-')) usageError(`Missing value for ${a}.`);
     if (a === '--format' || a === '-f') format = value.toLowerCase();
-    else if (a === '--brand' || a === '-b') brandArg = value.toLowerCase();
+    else if (a === '--brand' || a === '-b') {
+      // Undocumented: old scripts may still pass the brand; 2026 is the only one left
+      if (value !== '2026') {
+        console.error(CLASSIC_REMOVED);
+        process.exit(1);
+      }
+    }
     else { linkBase = value; relativeLinks = true; }
   } else if (a === '--no-external-links') {
     stripExternalLinks = true;
@@ -46,7 +53,7 @@ for (let i = 0; i < args.length; i++) {
 }
 
 if (!inputArg) {
-  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--brand 2026|classic] [--no-external-links] [--relative-links] [--link-base <url>]');
+  console.error('Usage: convert.js <input.md|folder> [output] [--format pdf|docx|html] [--no-external-links] [--relative-links] [--link-base <url>]');
   process.exit(1);
 }
 
@@ -90,25 +97,12 @@ function folderUrl(input) {
 }
 if (linkBase) linkBase = folderUrl(linkBase);
 
-// ponytail: two brands only while the classic one is phased out — delete the
-// classic renderers and this switch when it goes
-const BRANDS = ['classic', '2026'];
-if (brandArg && !BRANDS.includes(brandArg)) {
-  console.error(`Unknown brand: ${brandArg}. Supported: ${BRANDS.join(', ')}`);
-  process.exit(1);
-}
-
-// --brand wins; otherwise the (first) document's `brand:` frontmatter; default 2026
-function pickBrand(parsed) {
-  const brand = brandArg || String(parsed.brand || '2026').toLowerCase();
-  if (!BRANDS.includes(brand)) {
-    console.error(`Unknown brand in frontmatter: ${brand}. Supported: ${BRANDS.join(', ')}`);
-    process.exit(1);
+// A document still asking for the removed classic brand is rendered in the 2026 brand
+function warnClassic(parsed, file) {
+  if (String(parsed.brand).toLowerCase() === 'classic') {
+    console.warn(`${path.basename(file)}: the classic brand was removed; rendering in the 2026 brand.`);
   }
-  return brand;
 }
-
-const renderer = (name, brand) => require(brand === '2026' ? `./${name}-2026` : `./${name}`);
 
 const inputPath = path.resolve(inputArg);
 
@@ -180,14 +174,10 @@ async function main() {
     // "#anchor" links get the doc-{i}- prefix the merged renderers give heading ids
     const parsedDocs = mdFiles.map((f, i) => parseMarkdown(f, { stripExternal: stripExternalLinks, anchorPrefix: `doc-${i}-` }));
 
-    const brand = pickBrand(parsedDocs[0]);
-    if (format === 'html') {
-      const { renderMergedHtml } = renderer('render-html', brand);
-      renderMergedHtml(parsedDocs, inputPath, outputFile);
-    } else {
-      const { renderMergedPdf } = renderer('render-pdf', brand);
-      renderMergedPdf(parsedDocs, inputPath, outputFile);
-    }
+    parsedDocs.forEach((p, i) => warnClassic(p, mdFiles[i]));
+    // renderers load on use: HTML output needs neither puppeteer nor docx
+    if (format === 'html') require('./render-html').renderMergedHtml(parsedDocs, inputPath, outputFile);
+    else require('./render-pdf').renderMergedPdf(parsedDocs, inputPath, outputFile);
     console.log(`Written: ${outputFile}`);
   } else {
     const ext = format === 'docx' ? '.docx' : format === 'html' ? '.html' : '.pdf';
@@ -198,18 +188,11 @@ async function main() {
     // gets absolute file:// links; post-process the PDF annotations if PDF ever needs this
     if (relativeLinks && !linkBase && format === 'pdf') console.warn('--relative-links: PDF links become absolute file paths on this machine; use docx or html for a delivery.');
     const parsed = parseMarkdown(inputPath, { stripExternal: stripExternalLinks, docExt: relativeLinks ? ext : '', linkBase, linkRoot: process.cwd() });
-    const brand = pickBrand(parsed);
+    warnClassic(parsed, inputPath);
 
-    if (format === 'docx') {
-      const { renderDocx } = renderer('render-docx', brand);
-      await renderDocx(parsed, outputFile);
-    } else if (format === 'html') {
-      const { renderHtml } = renderer('render-html', brand);
-      renderHtml(parsed, outputFile);
-    } else {
-      const { renderPdf } = renderer('render-pdf', brand);
-      renderPdf(parsed, outputFile);
-    }
+    if (format === 'docx') await require('./render-docx').renderDocx(parsed, outputFile);
+    else if (format === 'html') require('./render-html').renderHtml(parsed, outputFile);
+    else require('./render-pdf').renderPdf(parsed, outputFile);
 
     console.log(`Written: ${outputFile}`);
   }

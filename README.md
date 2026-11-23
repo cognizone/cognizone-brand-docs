@@ -16,7 +16,7 @@ Works on macOS, Linux, and Windows — no bash or pandoc required.
 - **Full Markdown support** — headings, tables, lists (nested/mixed), code blocks, blockquotes, images, links, inline formatting
 - **HTML `<img>` tags** with width/height for precise image sizing (give only one and the other follows the image's aspect ratio)
 - **YAML frontmatter** for document metadata (title, subtitle, summary, id, type, status, version, date, author, client, project, classification)
-- **Cognizone 2026 brand** — plum / cream colours, Calistoga titles, Roboto / Roboto Mono text, A4 layout (the old brand is still available with `-b classic` for a short transition)
+- **Cognizone 2026 brand** — plum / cream colours, Calistoga titles, Roboto / Roboto Mono text, A4 layout
 - **Cross-platform** — pure Node.js, no bash or pandoc dependency
 
 ## Requirements
@@ -82,7 +82,7 @@ A Word file opens with `–` in place of the contents page numbers. To fill them
 
 Word output embeds PNG, JPEG, GIF and BMP images and converts SVG images to PNG. Any other file used as an image is left out with a warning and shows as `[alt text]`.
 
-Raw HTML in the Markdown can't run anything in 2026-brand HTML or PDF output: `<script>`, `on…=` handlers and `javascript:` links are inert, and `<iframe>` / `<object>` load nothing.
+Raw HTML in the Markdown can't run anything in HTML or PDF output: `<script>`, `on…=` handlers and `javascript:` links are inert, and `<iframe>` / `<object>` load nothing.
 
 ### Using it from Claude Code
 
@@ -91,7 +91,7 @@ Claude Code picks the tool up from the shell like any other command. To make it 
 ```markdown
 ## Cognizone branded documents
 Render client-facing Markdown deliverables with `cognizone-convert` (`-f pdf|docx|html`),
-never with plain pandoc. It uses the 2026 Cognizone brand by default.
+never with plain pandoc. It uses the 2026 Cognizone brand.
 ```
 
 ## Document format
@@ -111,19 +111,11 @@ project: REG+
 ---
 ```
 
-The frontmatter must be YAML; `---js` / `---javascript` frontmatter is refused. All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`, plus `subtitle`, `summary`, `classification` and `brand` (see [Brands](#brands)).
+The frontmatter must be YAML; `---js` / `---javascript` frontmatter is refused. All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`, plus `subtitle`, `summary` and `classification` (see [Cover and footer fields](#cover-and-footer-fields)).
 
-## Brands
+### Cover and footer fields
 
-The 2026 Cognizone brand (plum / cream, Calistoga titles) is the default. The old brand is kept for a short transition and will be removed:
-
-```bash
-cognizone-convert document.md -b classic             # old brand, any format
-```
-
-Or set `brand: classic` in a document's frontmatter (the `-b` / `--brand` flag wins over it). For a folder merge without `--brand`, the first document's `brand:` decides for the whole folder.
-
-Extra optional frontmatter fields used by the 2026 cover and footer:
+Extra optional frontmatter fields used by the cover and footer:
 
 | Field | Use |
 |---|---|
