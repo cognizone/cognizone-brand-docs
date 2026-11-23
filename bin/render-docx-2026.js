@@ -8,6 +8,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const { parseMermaidOpts } = require('./mermaid-opts');
+const { decodeEntities } = require('./parse');
 
 const {
   Document, Packer, Paragraph, TextRun, ExternalHyperlink, InternalHyperlink, ImageRun,
@@ -43,18 +44,9 @@ const BODY_AFTER = 120; // 6pt
 
 const COVER_ADDRESS = 'Cognizone BV · Avenue Arnaud Fraiteur 15-23, 1050 Ixelles, Belgium · BE 0634.615.174';
 
-// Decode the HTML entities a browser would show as characters, in one pass so
-// "&amp;lt;" becomes "&lt;", not "<". Used on prose text (the Markdown source, where
-// "&amp;" shows "&" in HTML) and on inline code / escapes (which marked escapes once).
-// Fenced code text is verbatim and must not be decoded.
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', copy: '©' };
-function decodeEntities(s) {
-  return s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (m, dec, hex, name) => {
-    const code = dec ? parseInt(dec, 10) : hex ? parseInt(hex, 16) : null;
-    if (code === null) return ENTITIES[name] ?? m;
-    return code > 0 && code <= 0x10FFFF ? String.fromCodePoint(code) : m;
-  });
-}
+// decodeEntities (parse.js) is used on prose text (the Markdown source, where "&amp;" shows
+// "&" in HTML) and on inline code / escapes (which marked escapes once). Fenced code text
+// is verbatim and must not be decoded.
 
 const SCRIPT_DIR = path.join(__dirname, '..');
 const ICON_PATH  = path.join(SCRIPT_DIR, 'templates', '2026', 'icon.png');

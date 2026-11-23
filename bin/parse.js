@@ -18,11 +18,17 @@ const userError = msg => Object.assign(new Error(msg), { userError: true });
 // gray-matter evaluates `---javascript` / `---js` frontmatter with eval: refuse it
 const NO_JS = { parse() { throw userError('only YAML frontmatter is supported'); } };
 
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00A0', colon: ':', tab: '\t', newline: '\n' };
+// Decode the HTML entities a browser would show as characters, in one pass so
+// "&amp;lt;" becomes "&lt;", not "<". Unknown names and code points that are not valid
+// XML characters (controls, surrogates) are left as written.
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00A0', copy: '\u00A9', colon: ':', tab: '\t', newline: '\n' };
 function decodeEntities(s) {
-  return s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (e, dec, hex, name) =>
-    dec ? String.fromCodePoint(Number(dec) || 0xFFFD) : hex ? String.fromCodePoint(parseInt(hex, 16) || 0xFFFD)
-      : ENTITIES[name.toLowerCase()] ?? e);
+  return s.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (m, dec, hex, name) => {
+    if (name) return Object.hasOwn(ENTITIES, name.toLowerCase()) ? ENTITIES[name.toLowerCase()] : m;
+    const cp = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+    const ok = cp === 9 || cp === 10 || cp === 13 || (cp >= 0x20 && cp <= 0xD7FF) || (cp >= 0xE000 && cp <= 0xFFFD) || (cp >= 0x10000 && cp <= 0x10FFFF);
+    return ok ? String.fromCodePoint(cp) : m;
+  });
 }
 
 // Plain text of a heading from its inline tokens: link text without the URL,
@@ -42,7 +48,8 @@ function rawFrontmatterValue(rawMatter, key) {
 
 // Hrefs a browser would run or load as content; checked after the entity decoding
 // and whitespace/control-character removal a browser does
-const isUnsafeHref = href => /^(javascript|vbscript|data):/i.test(decodeEntities(href).replace(/[\u0000-\u0020]/g, ''));
+// (a numeric entity decodeEntities left alone is a control character to a browser: dropped too)
+const isUnsafeHref = href => /^(javascript|vbscript|data):/i.test(decodeEntities(href).replace(/&#x?[0-9a-f]+;|[\u0000-\u0020]/gi, ''));
 
 // --no-external-links for raw HTML: drop <a href> tags (keeping their content) unless the
 // href is an "#anchor". Opening and closing tags can sit in separate sibling inline tokens.
@@ -139,10 +146,10 @@ function parseMarkdown(inputFile, opts = {}) {
   const footerTitle = [client, project].filter(Boolean).join(' \u00B7 ');
 
   // Lex into token tree; strip the title H1 (cover page only), but only when it is
-  // the first block: a "# comment" in a code fence or a later H1 stays.
+  // the first block (after any raw HTML): a "# comment" in a code fence or a later H1 stays.
   const tokens = marked.lexer(mdBody);
   let mdNoH1 = mdBody;  // body text without the title H1 (the classic PDF renderer re-lexes it)
-  const first = tokens.findIndex(t => t.type !== 'space');
+  const first = tokens.findIndex(t => t.type !== 'space' && t.type !== 'html');  // a leading comment or logo block may precede the title
   if (first !== -1 && tokens[first].type === 'heading' && tokens[first].depth === 1) {
     mdNoH1 = mdBody.replace(tokens.splice(first, 1)[0].raw, () => '');
   }
@@ -200,4 +207,4 @@ function parseMarkdown(inputFile, opts = {}) {
   };
 }
 
-module.exports = { parseMarkdown, slugify };
+module.exports = { parseMarkdown, slugify, decodeEntities };

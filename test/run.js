@@ -1174,6 +1174,35 @@ try {
   }
 }
 
+// A title H1 after a leading HTML comment is still the title; entity decoding never throws
+// and never resolves names through Object.prototype; a <meta refresh> must not get another
+// (local) file printed as the PDF
+{
+  const dir = path.join(OUT_DIR, 'review-misc');
+  fs.mkdirSync(dir, { recursive: true });
+  const md = path.join(dir, 'doc.md');
+  fs.writeFileSync(md, '---\ntitle: Misc\n---\n\n<!-- lint-disable -->\n\n# Misc title\n\n## One &#99999999; &constructor; &#xD800;\n\n[x](http://a/?q=&#99999999;)\n\n```sh\n# keep this comment\n```\n');
+  try {
+    const parsed = parseMarkdown(md);
+    assert('review: title H1 after a leading HTML comment is stripped, "# comment" in code kept',
+      !parsed.tokens.some(t => t.type === 'heading' && t.depth === 1) && parsed.tokens.some(t => t.type === 'code' && t.text.includes('# keep this comment')));
+    assert('review: invalid or unknown entities stay as written', parsed.tocEntries[0].text === 'One &#99999999; &constructor; &#xD800;', parsed.tocEntries[0].text);
+  } catch (e) {
+    assert('review: title after HTML comment / entity decoding', false, e.message);
+  }
+  fs.writeFileSync(path.join(dir, 'secret.txt'), 'LOCAL_SECRET_MARKER\n');
+  const refresh = path.join(dir, 'refresh.md');
+  const out = path.join(dir, 'refresh.pdf');
+  fs.writeFileSync(refresh, '---\ntitle: Refresh\n---\n\n## One\n\n<meta http-equiv="refresh" content="0;url=secret.txt">\n');
+  try {
+    execFileSync(process.execPath, [CONVERT, refresh, out], { stdio: 'pipe' });
+    assert('review: 2026 pdf refuses a document that navigates away (meta refresh)', false, 'should have thrown');
+  } catch (e) {
+    assert('review: 2026 pdf refuses a document that navigates away (meta refresh)',
+      !fs.existsSync(out) && (e.stderr?.toString() || '').includes('tries to load another page'), e.stderr?.toString().slice(0, 200));
+  }
+}
+
 // ── Report ───────────────────────────────────────────────────────────────────
 console.log('');
 for (const t of tests) {

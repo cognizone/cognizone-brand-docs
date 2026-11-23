@@ -89,6 +89,18 @@ const COVER_CONTENT_HEIGHT  = Math.floor(256 * 96 / 25.4);
   // page-number estimate drifts further as the document gets longer.
   await page.setViewport({ width: PRINT_CONTENT_WIDTH, height: PRINT_CONTENT_HEIGHT });
 
+  // Only the document itself may load as a page: raw HTML in the Markdown
+  // (<meta http-equiv="refresh" content="0;url=some-local-file">) would otherwise
+  // navigate away and get that file printed instead. Stop rather than print it.
+  let navigated = false;
+  await page.setRequestInterception(true);
+  page.on('request', req => {
+    if (!req.isNavigationRequest()) return req.continue();
+    if (!navigated) { navigated = true; return req.continue(); }
+    console.error(`The document tries to load another page (${req.url()}), e.g. through a <meta http-equiv="refresh"> in the Markdown; not printed.`);
+    process.exit(1);
+  });
+
   await page.goto(pathToFileURL(htmlFile).href, { waitUntil: 'networkidle0' });
 
   // Header/footer margin boxes (see top of file)
