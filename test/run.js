@@ -325,10 +325,29 @@ try {
 // ── Test HTML folder merge ───────────────────────────────────────────────────
 const mergeDir = path.join(OUT_DIR, 'merge-src');
 fs.mkdirSync(mergeDir);
+// Two H2s and a skipped level (H2 → H4) per document
 fs.writeFileSync(path.join(mergeDir, 'a-first.md'),
-  '---\ntitle: First Doc\nid: DOC-A\nclient: TestClient\nproject: TestProject\n---\n\n# First Doc\n\n## Intro\n\nAlpha.\n');
+  '---\ntitle: First Doc\nid: DOC-A\nclient: TestClient\nproject: TestProject\n---\n\n# First Doc\n\n## Intro\n\nAlpha.\n\n#### Intro detail\n\nMore.\n\n## Later\n\nGamma.\n');
 fs.writeFileSync(path.join(mergeDir, 'b-second.md'),
-  '---\ntitle: Second Doc\nid: DOC-B\n---\n\n# Second Doc\n\n## Overview\n\nBeta.\n');
+  '---\ntitle: Second Doc\nid: DOC-B\n---\n\n# Second Doc\n\n## Overview\n\nBeta.\n\n#### Overview detail\n\nMore.\n\n## Closing\n\nDelta.\n');
+
+// Walks a TOC's <ul>/<li> tags: `error` names the first stray, misplaced or
+// unclosed tag; `depth` maps each entry's href to its list depth.
+function tocStructure(nav) {
+  const stack = [];
+  const depth = {};
+  for (const [, close, tag, href] of nav.matchAll(/<(\/?)(ul|li)\b[^>]*>(?:<a href="#([^"]*)")?/g)) {
+    if (close) {
+      if (stack.pop() !== tag) return { error: `stray </${tag}>` };
+      continue;
+    }
+    if (tag === 'li' && stack.at(-1) !== 'ul') return { error: '<li> outside a list' };
+    if (tag === 'ul' && stack.length && stack.at(-1) !== 'li') return { error: '<ul> directly inside <ul>' };
+    stack.push(tag);
+    if (href) depth[href] = stack.filter(t => t === 'ul').length;
+  }
+  return stack.length ? { error: `unclosed ${stack.join(' ')}` } : { depth };
+}
 
 const mergedHtmlOut = path.join(OUT_DIR, 'merged.html');
 try {
@@ -349,12 +368,12 @@ try {
     masterNav.includes('>1.1') && masterNav.includes('>2.1'),
     `master TOC toc-num spans missing 1.1/2.1: ${masterNav.slice(0, 400)}`);
 
-  // TOC nested-list markup must be balanced (open <li> == closing </li>)
-  const liOpen = (masterNav.match(/<li\b/g) || []).length;
-  const liClose = (masterNav.match(/<\/li>/g) || []).length;
-  assert('html merge: TOC <li> tags are balanced',
-    liOpen === liClose,
-    `open <li>=${liOpen}, close </li>=${liClose}`);
+  // TOC nested-list markup must be a well-formed tree (equal <li>/</li> counts
+  // also accept a stray </li> with the next item outside its list)
+  const { error, depth = {} } = tocStructure(masterNav);
+  assert('html merge: TOC is a well-formed nested list',
+    !error && depth['doc-0-intro'] > depth['doc-0-cover'] && depth['doc-0-later'] === depth['doc-0-intro'],
+    error || JSON.stringify(depth));
 
   // Merged footer is empty (Puppeteer parity: single static footer, no client/project)
   const footer = (html.match(/<footer class="doc-footer">[\s\S]*?<\/footer>/) || [''])[0];
@@ -798,6 +817,143 @@ try {
     rels.includes('Target="https://x.sharepoint.com/sites/REG/Shared%20Documents/delivery/specs/EVR-10/case%20model.docx?web=1"'));
 } catch (e) {
   assert('link-base docx: absolute SharePoint link (?web=1) from library-view URL', false, e.stderr?.toString() || e.message);
+}
+
+// ── 2026 HTML/PDF: active content, fence escaping, nested mermaid, image paths, TOC, cover ──
+// Raw HTML in someone else's Markdown must not run (CSP), fence info strings and
+// mermaid source must not break out of their markup. Every hostile payload
+// appends to document.title, which Chrome writes into the PDF Info dictionary
+// in plain text, so script execution shows in the PDF bytes without a PDF tool.
+// pdftotext (poppler), when installed, also checks text and page numbers.
+{
+  const { spawnSync } = require('child_process');
+  const hasPdftotext = !spawnSync('pdftotext', ['-v']).error;
+  const pdfPages = f => execFileSync('pdftotext', ['-layout', f, '-']).toString().split('\f');
+  const skip = hasPdftotext ? '' : ' (skipped: pdftotext not installed)';
+  const dir = path.join(OUT_DIR, 'review-src');
+  fs.mkdirSync(dir);
+  fs.writeFileSync(path.join(dir, 'secret.txt'), 'LEAKED_LOCAL_FILE\n');
+  fs.copyFileSync(path.join(__dirname, 'sample-image.png'), path.join(dir, 'pic one.png'));
+  const names = ['Alpha', 'Bravo', 'Charlie', 'Delta', 'Echo', 'Foxtrot'];
+  // (the page-number estimate is exact for this layout; some headings that land
+  // near a page bottom are still off by one, cover or not)
+  const para = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. '.repeat(6);
+  const sections = names.map((n, i) => `## Part ${n}\n\n${Array(3 + 2 * i).fill(para).join('\n\n')}\n\n### Sub ${n}\n\n${para}\n`);
+  const hostile = [
+    '<script>document.title += " PWNED_SCRIPT"</script>',
+    '<img src="missing.png" onerror="document.title += \' PWNED_ONERROR\'">',
+    '<style>@keyframes k { from { opacity: 0.9 } to { opacity: 1 } }</style>',
+    '<div style="animation: k 0.01s" onanimationend="document.title += \' PWNED_ANIM\'">box</div>',
+    '~~~x"><img src=x onerror="document.title += \' PWNED_FENCE\'">\ncode\n~~~',
+    '```mermaid\ngraph TD\nNodeAlpha-->NodeBeta\n%% </pre><script>document.title += " PWNED_MERMAID"</script><pre>\n```',
+    '<iframe src="secret.txt"></iframe>',
+    '<object data="secret.txt"></object>',
+    '[js link](javascript:void(0))',
+  ].join('\n\n');
+  // 60-sentence summary: the cover overflows its page
+  const summary = Array(60).fill('This summary sentence is long enough to fill the cover.').join(' ');
+  const md = path.join(dir, 'hostile.md');
+  fs.writeFileSync(md, `---\ntitle: Review hostile\nsummary: "${summary}"\n---\n\n${sections.join('\n')}\n## Part Hostile\n\n${hostile}\n`);
+
+  // HTML: CSP first in <head>, only the tool's scripts carry the nonce
+  try {
+    const out = path.join(OUT_DIR, 'review-hostile.html');
+    execFileSync(process.execPath, [CONVERT, md, out], { stdio: 'pipe' });
+    const html = fs.readFileSync(out, 'utf8');
+    const nonce = (html.match(/^<!DOCTYPE html>\s*<html[^>]*>\s*<head>\s*<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-([A-Za-z0-9+/=]{16,})'; object-src 'none'; frame-src 'none'">/) || [])[1];
+    assert('2026 html: Content-Security-Policy is the first thing in <head>', nonce, html.slice(0, 300));
+    const nonced = html.split(`<script nonce="${nonce}">`).length - 1;
+    assert('2026 html: the mermaid bundle and init carry the CSP nonce',
+      nonce && nonced === 2 && html.includes(`<script nonce="${nonce}">\n  mermaid.initialize`), `${nonced} nonce scripts`);
+    assert('2026 html: fence info string escaped, first word only',
+      html.includes('<code class="language-x&quot;&gt;&lt;img">') && !html.includes('PWNED_FENCE\'">'));
+    assert('2026 html: mermaid source escaped', html.includes('%% &lt;/pre&gt;&lt;script&gt;'));
+  } catch (e) {
+    assert('2026 html: hostile document converts', false, e.stderr?.toString() || e.message);
+  }
+
+  // PDF: nothing runs or loads, mermaid still renders, the long cover warns and
+  // counts as one page for the TOC numbers
+  try {
+    const out = path.join(OUT_DIR, 'review-hostile.pdf');
+    const r = spawnSync(process.execPath, [CONVERT, md, out], { encoding: 'utf8' });
+    assert('2026 pdf: hostile document converts', r.status === 0, r.stderr);
+    const bytes = fs.readFileSync(out).toString('latin1');
+    assert('2026 pdf: no script, handler or mermaid breakout ran', bytes.includes('/Title (Review hostile)') && !bytes.includes('PWNED'),
+      (bytes.match(/\/Title \([^)]*\)/) || [])[0]);
+    assert('2026 pdf: overflowing cover warns on stderr', r.stderr.includes('cover content does not fit on one page'), r.stderr);
+    const pages = hasPdftotext ? pdfPages(out) : [];
+    const text = pages.join('\f');
+    assert(`2026 pdf: iframe/object load no local file; mermaid renders${skip}`,
+      !hasPdftotext || (!text.includes('LEAKED_LOCAL_FILE') && !text.includes('PWNED') && text.includes('NodeAlpha')));
+    const wrong = !hasPdftotext ? [] : names.map(n => {
+      const toc = +((pages[1].match(new RegExp(`Part ${n}\\s+(\\d+)`)) || [])[1]);
+      const real = pages.findIndex((p, i) => i > 1 && new RegExp(`^\\s*(CHAPTER \\d+\\s*)?Part ${n}\\s*$`, 'm').test(p)) + 1;
+      return toc === real ? '' : `${n}: toc ${toc}, real ${real}`;
+    }).filter(Boolean);
+    assert(`2026 pdf: TOC page numbers right after an overflowing cover${skip}`, !wrong.length, wrong.join('; '));
+  } catch (e) {
+    assert('2026 pdf: hostile document converts', false, e.stderr?.toString() || e.message);
+  }
+
+  // HTML: a mermaid fence only inside a blockquote / list item still inlines the bundle
+  try {
+    const nested = path.join(dir, 'nested-mermaid.md');
+    fs.writeFileSync(nested, '---\ntitle: Nested\n---\n\n## S\n\n> ```mermaid\n> graph TD\n> A-->B\n> ```\n\n- item\n\n  ```mermaid\n  graph TD\n  C-->D\n  ```\n');
+    const out = path.join(OUT_DIR, 'review-nested-mermaid.html');
+    execFileSync(process.execPath, [CONVERT, nested, out], { stdio: 'pipe' });
+    assert('2026 html: nested mermaid fence inlines the bundle', fs.readFileSync(out, 'utf8').includes('mermaid.initialize'));
+  } catch (e) {
+    assert('2026 html: nested mermaid fence inlines the bundle', false, e.stderr?.toString() || e.message);
+  }
+
+  // HTML: %20-encoded, <angle-bracket> and single-quoted raw image paths all embed
+  try {
+    const imgMd = path.join(dir, 'images.md');
+    fs.writeFileSync(imgMd, "---\ntitle: Images\n---\n\n## S\n\n![a](pic%20one.png)\n\n![b](<pic one.png>)\n\n<img src='pic one.png' alt='c'>\n");
+    const out = path.join(OUT_DIR, 'review-images.html');
+    execFileSync(process.execPath, [CONVERT, imgMd, out], { stdio: 'pipe' });
+    const html = fs.readFileSync(out, 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
+    const srcs = [...html.matchAll(/<img\s[^>]*src=(["'])(.*?)\1/g)].map(m => m[2].slice(0, 22));
+    assert('2026 html: %20 and single-quoted image paths embedded',
+      srcs.length === 5 && srcs.every(s => s.startsWith('data:image/png')), srcs.join(' '));
+  } catch (e) {
+    assert('2026 html: %20 and single-quoted image paths embedded', false, e.stderr?.toString() || e.message);
+  }
+
+  // TOC: a deep start (H3 before any H2) and a skipped level (H2 → H4 → H3) stay well-formed
+  const tocDir = path.join(dir, 'toc');
+  fs.mkdirSync(tocDir);
+  fs.writeFileSync(path.join(tocDir, 'a.md'), '---\ntitle: Toc A\n---\n\n### First\n\nx\n\n## Next\n\n#### Deep\n\n### Mid\n\n## Last\n\n![a](../pic%20one.png)\n');
+  fs.writeFileSync(path.join(tocDir, 'b.md'), '---\ntitle: Toc B\n---\n\n## One\n\n#### Skipped\n\n## Two\n');
+  try {
+    const out = path.join(OUT_DIR, 'review-toc.html');
+    execFileSync(process.execPath, [CONVERT, path.join(tocDir, 'a.md'), out], { stdio: 'pipe' });
+    const nav = (fs.readFileSync(out, 'utf8').match(/<nav id="TOC">[\s\S]*?<\/nav>/) || [''])[0];
+    const { error, depth = {} } = tocStructure(nav);
+    assert('2026 html: TOC with skipped levels is a well-formed nested list',
+      !error && depth.mid > depth.next && depth.deep > depth.next && depth.last === depth.next, error || JSON.stringify(depth));
+    const merged = path.join(OUT_DIR, 'review-toc-merged.html');
+    execFileSync(process.execPath, [CONVERT, tocDir, merged], { stdio: 'pipe' });
+    const navs = fs.readFileSync(merged, 'utf8').match(/<nav id="TOC">[\s\S]*?<\/nav>/g) || [];
+    const errors = navs.map(n => tocStructure(n).error).filter(Boolean);
+    assert('2026 html merge: every TOC is a well-formed nested list', navs.length === 3 && !errors.length, errors.join('; '));
+  } catch (e) {
+    assert('2026 html: TOC with skipped levels', false, e.stderr?.toString() || e.message);
+  }
+
+  // PDF folder merge (2026): both documents, and the %20 image resolved once (not %2520)
+  try {
+    const out = path.join(OUT_DIR, 'review-merged.pdf');
+    execFileSync(process.execPath, [CONVERT, tocDir, out], { stdio: 'pipe' });
+    const bytes = fs.readFileSync(out).toString('latin1');
+    assert('2026 pdf merge: PDF with the %20-encoded image embedded',
+      bytes.startsWith('%PDF-') && /\/Width 232\b/.test(bytes));   // sample-image.png is 232 × 48
+    const text = hasPdftotext ? pdfPages(out).join('\f') : '';
+    assert(`2026 pdf merge: both documents' titles present${skip}`, !hasPdftotext || (text.includes('Toc A') && text.includes('Toc B')));
+  } catch (e) {
+    assert('2026 pdf merge: generation succeeds', false, e.stderr?.toString() || e.message);
+  }
 }
 
 // Chrome embeds a variable font as Type 3 outlines (no BaseFont), which viewers draw thin;

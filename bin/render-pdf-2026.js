@@ -9,6 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
+const crypto = require('crypto');
 const { parseMermaidOpts } = require('./mermaid-opts');
 
 function escapeHtml(s) {
@@ -30,7 +31,38 @@ function mermaidWrapHtml(text, info) {
     opts.align === 'left'  ? '0 auto 0 0' :
     opts.align === 'right' ? '0 0 0 auto' :
                              '0 auto';
-  return `<div class="mermaid-wrap" style="max-width:${opts.maxWidth}px;margin:${marginCss};"><pre class="mermaid">${text}</pre></div>\n`;
+  return `<div class="mermaid-wrap" style="max-width:${opts.maxWidth}px;margin:${marginCss};"><pre class="mermaid">${escapeHtml(text)}</pre></div>\n`;
+}
+
+// Markdown may carry raw HTML. The page Chrome prints from therefore runs no
+// script (no element carries the nonce: pdf-print.js evaluates mermaid through
+// DevTools, which CSP does not govern) and loads no frames or plugins.
+function cspMeta() {
+  const nonce = crypto.randomBytes(16).toString('base64');
+  return `<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}'; object-src 'none'; frame-src 'none'">`;
+}
+
+// A well-formed nested list whatever the heading levels: a skipped level
+// (H2 → H4) or a deep start (H3 before any H2) opens a list for it instead of
+// emitting a stray </li>.
+function nestedList(entries, itemHtml) {
+  const lines = [];
+  const stack = [];   // levels of the open <ul>s; each holds one open <li>
+  for (const e of entries) {
+    while (stack.length && stack[stack.length - 1] > e.level) {
+      lines.push('</li></ul>');
+      stack.pop();
+    }
+    if (stack.length && stack[stack.length - 1] === e.level) {
+      lines.push('</li>');
+    } else {
+      lines.push('<ul>');
+      stack.push(e.level);
+    }
+    lines.push(itemHtml(e));
+  }
+  while (stack.length) { lines.push('</li></ul>'); stack.pop(); }
+  return lines;
 }
 
 const SCRIPT_DIR    = path.join(__dirname, '..');
@@ -54,33 +86,9 @@ function displayNumber(number, level) {
 function buildToc(entries) {
   if (!entries.length) return '<nav id="TOC"></nav>';
 
-  const lines = ['<nav id="TOC">'];
-  const stack = [];
-  let prev = 0;
-
-  for (const h of entries) {
-    if (prev === 0) {
-      lines.push('<ul>');
-      stack.push(h.level);
-    } else if (h.level > prev) {
-      lines.push('<ul>');
-      stack.push(h.level);
-    } else if (h.level === prev) {
-      lines.push('</li>');
-    } else {
-      while (stack.length && stack[stack.length - 1] > h.level) {
-        lines.push('</li></ul>');
-        stack.pop();
-      }
-      lines.push('</li>');
-    }
-    lines.push(`<li><a href="#${h.id}"><span class="toc-section-number">${displayNumber(h.number, h.level)}</span><span class="toc-title">${escapeText(h.text)}</span><span class="toc-page"></span></a>`);
-    prev = h.level;
-  }
-
-  while (stack.length) { lines.push('</li></ul>'); stack.pop(); }
-  lines.push('</nav>');
-  return lines.join('\n');
+  return ['<nav id="TOC">',
+    ...nestedList(entries, h => `<li><a href="#${h.id}"><span class="toc-section-number">${displayNumber(h.number, h.level)}</span><span class="toc-title">${escapeText(h.text)}</span><span class="toc-page"></span></a>`),
+    '</nav>'].join('\n');
 }
 
 // ── Body renderer (section-numbered headings, mermaid, escaped code) ─────────
@@ -102,8 +110,9 @@ function useRenderer(entries) {
         if (parseMermaidOpts(lang || '').isMermaid) {
           return mermaidWrapHtml(text, lang);
         }
-        // Default code block rendering
-        const langClass = lang ? ` class="language-${lang}"` : '';
+        // Default code block rendering: the class takes the info string's first word only
+        const word = (lang || '').match(/^\S*/)[0];
+        const langClass = word ? ` class="language-${escapeText(word)}"` : '';
         return `<pre><code${langClass}>${escapeHtml(text)}</code></pre>\n`;
       },
     },
@@ -198,6 +207,7 @@ function renderPdf(parsed, outputFile) {
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
+  ${cspMeta()}
   <meta charset="utf-8">
   <title>${escapeText(title)}</title>
   <base href="${pathToFileURL(inputDir + '/').href}">
@@ -226,12 +236,16 @@ function renderPdf(parsed, outputFile) {
 
 // ── Merged PDF (folder input) ────────────────────────────────────────────────
 
+// The src is URL-encoded (marked turns `<pic one.png>` into pic%20one.png) and
+// may be entity-escaped: decode both, so pathToFileURL encodes exactly once.
 function resolveImagePaths(html, inputDir) {
   return html.replace(
-    /(<img\s[^>]*src=")(?!data:|https?:|file:)([^"]+)(")/gi,
-    (_m, pre, src, post) => {
-      const abs = pathToFileURL(path.resolve(inputDir, src)).href;
-      return pre + abs + post;
+    /(<img\s[^>]*src=)(["'])(?!data:|https?:|file:)((?:(?!\2).)+)\2/gi,
+    (_m, pre, _q, src) => {
+      let file = src.replace(/&amp;/g, '&');
+      try { file = decodeURIComponent(file); } catch { /* not URL-encoded */ }
+      const abs = pathToFileURL(path.resolve(inputDir, file)).href;
+      return `${pre}"${abs.replace(/&/g, '&amp;')}"`;
     },
   );
 }
@@ -313,6 +327,7 @@ function renderMergedPdf(parsedDocs, folderPath, outputFile) {
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
+  ${cspMeta()}
   <meta charset="utf-8">
   <title>${escapeText(folderName)}</title>
   <link rel="stylesheet" href="${cssUrl}">

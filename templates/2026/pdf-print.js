@@ -75,6 +75,9 @@ const pageCss = `
 const A4_WIDTH_PX           = 794;   // 210mm
 const PRINT_CONTENT_WIDTH   = 643;   // 170mm (210 - 20 - 20)
 const PRINT_CONTENT_HEIGHT  = 952;   // 252mm (297 - 25 - 20)
+// Cover pages are margin-less, 296mm tall with 20mm padding (styles.css), so
+// their content gets the same 170mm width and 256mm of height.
+const COVER_CONTENT_HEIGHT  = Math.floor(256 * 96 / 25.4);
 
 (async () => {
   const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
@@ -94,10 +97,14 @@ const PRINT_CONTENT_HEIGHT  = 952;   // 252mm (297 - 25 - 20)
   // Force light color scheme so mermaid diagrams don't pick up dark mode
   await page.emulateMediaFeatures([{ name: 'prefers-color-scheme', value: 'light' }]);
 
-  // Render mermaid diagrams (if any) before TOC page-number calculation
+  // Render mermaid diagrams (if any) before TOC page-number calculation.
+  // The page's Content-Security-Policy blocks every script without its nonce
+  // (Markdown may carry raw <script>), and addScriptTag inserts an inline
+  // script — so evaluate the bundle through DevTools, which CSP does not
+  // govern. `void 0` keeps the bundle's completion value from being serialized.
   const hasMermaid = await page.evaluate(() => document.querySelectorAll('pre.mermaid').length > 0);
   if (hasMermaid && mermaidJsPath) {
-    await page.addScriptTag({ path: mermaidJsPath });
+    await page.evaluate(`${fs.readFileSync(mermaidJsPath, 'utf8')}\n;void 0`);
     await page.evaluate(async () => {
       mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
       await mermaid.run();
@@ -127,24 +134,36 @@ const PRINT_CONTENT_HEIGHT  = 952;   // 252mm (297 - 25 - 20)
   // We walk all relevant elements in document order, maintain a running
   // "virtual" Y that includes inserted page-bump whitespace, and read off
   // each anchor's resulting page from that Y.
-  await page.evaluate((PAGE_HEIGHT) => {
+  const overflowingCovers = await page.evaluate((PAGE_HEIGHT, COVER_HEIGHT) => {
     function absoluteTop(el) {
       let top = 0;
       while (el) { top += el.offsetTop; el = el.offsetParent; }
       return top;
     }
 
-    // Collect events: forced breaks, avoid-blocks, headings, and TOC targets.
-    // For each, record its layout-Y and (when relevant) height. Headings carry
-    // a "keep-with-next" budget — if the heading and its first following block
-    // don't both fit on the current page, both push to the next.
+    // Collect events: forced breaks, covers, avoid-blocks, headings, and TOC
+    // targets. For each, record its layout-Y and (when relevant) height.
+    // Headings carry a "keep-with-next" budget — if the heading and its first
+    // following block don't both fit on the current page, both push to the next.
     const events = [];
 
     document.querySelectorAll('.page-break').forEach(el => {
       events.push({ kind: 'break', y: absoluteTop(el) });
     });
 
+    // Print gives every cover exactly one page (fixed height, overflow
+    // clipped; styles.css), whatever its on-screen height. Content that does
+    // not fit is reported back so the caller can warn.
+    const overflowing = [];
+    document.querySelectorAll('.cover-page').forEach(el => {
+      events.push({ kind: 'cover', y: absoluteTop(el), h: el.offsetHeight });
+      if (el.offsetHeight > COVER_HEIGHT) {
+        overflowing.push((el.querySelector('.cover-title') || el).textContent.trim());
+      }
+    });
+
     document.querySelectorAll('table, pre, .mermaid-wrap').forEach(el => {
+      if (el.closest('.cover-page')) return;   // covered by the cover's own page
       events.push({ kind: 'avoid', y: absoluteTop(el), h: el.offsetHeight });
     });
 
@@ -178,8 +197,8 @@ const PRINT_CONTENT_HEIGHT  = 952;   // 252mm (297 - 25 - 20)
       }
     }
 
-    // Sort by Y; on ties, breaks first, then avoid, then targets.
-    const order = { break: 0, avoid: 1, target: 2 };
+    // Sort by Y; on ties, breaks first, then covers, then avoid, then targets.
+    const order = { break: 0, cover: 1, avoid: 2, target: 3 };
     events.sort((a, b) => a.y - b.y || order[a.kind] - order[b.kind]);
 
     // Walk events maintaining: shift (whitespace inserted up to here),
@@ -207,6 +226,11 @@ const PRINT_CONTENT_HEIGHT  = 952;   // 252mm (297 - 25 - 20)
           page++;
           pageStart += PAGE_HEIGHT;
         }
+      } else if (e.kind === 'cover') {
+        // The cover fills the page it starts on: map its bottom edge to that
+        // page's bottom edge, so whatever follows starts on the next page.
+        advancePastY(vy);
+        shift = pageStart + PAGE_HEIGHT - (e.y + e.h);
       } else if (e.kind === 'avoid') {
         advancePastY(vy);
         const remaining = pageStart + PAGE_HEIGHT - vy;
@@ -224,7 +248,13 @@ const PRINT_CONTENT_HEIGHT  = 952;   // 252mm (297 - 25 - 20)
         if (pageEl) pageEl.textContent = String(page);
       }
     }
-  }, PRINT_CONTENT_HEIGHT);
+    return overflowing;
+  }, PRINT_CONTENT_HEIGHT, COVER_CONTENT_HEIGHT);
+
+  for (const title of overflowingCovers) {
+    console.error(`Warning: cover content does not fit on one page; shorten \`summary\` `
+      + `(or the other cover fields) — the rest of the cover is cut off in the PDF: "${title}"`);
+  }
 
   await page.pdf({
     path: outputPdf,

@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { marked } = require('marked');
 const { parseMermaidOpts } = require('./mermaid-opts');
 
@@ -71,10 +72,14 @@ function buildFontsCss() {
 
 // Resolve an image path from the markdown source to an absolute file URI or
 // embedded data URI. Relative paths are resolved against the document's dir.
+// The src may be URL-encoded (pic%20one.png for `pic one.png`): try the decoded
+// name first, then the literal one.
 function resolveImageSrc(src, inputDir) {
   if (/^(https?:|data:|file:)/i.test(src)) return src;
-  const absPath = path.resolve(inputDir, src);
-  if (!fs.existsSync(absPath)) return src;
+  let decoded = src;
+  try { decoded = decodeURIComponent(src); } catch { /* not URL-encoded */ }
+  const absPath = [decoded, src].map(p => path.resolve(inputDir, p)).find(p => fs.existsSync(p));
+  if (!absPath) return src;
   // Only embed recognised image types. Anything else (e.g. a .txt or a key
   // file) is left as-is so we never inline arbitrary file bytes.
   const ext = path.extname(absPath).toLowerCase();
@@ -89,8 +94,8 @@ function resolveImageSrc(src, inputDir) {
 // their relative src paths as data URIs too.
 function embedRawImages(html, inputDir) {
   return html.replace(
-    /(<img\s[^>]*src=")(?!data:|https?:|file:)([^"]+)(")/gi,
-    (_m, pre, src, post) => pre + resolveImageSrc(src, inputDir) + post,
+    /(<img\s[^>]*src=)(["'])(?!data:|https?:|file:)((?:(?!\2).)+)\2/gi,
+    (_m, pre, q, src) => pre + q + resolveImageSrc(src, inputDir) + q,
   );
 }
 
@@ -163,33 +168,27 @@ function tocHtml(tocEntries, idPrefix = '') {
   if (!tocEntries.length) return '';
 
   // Build nested list from flat entries (H2 → H4). Mirrors buildToc in
-  // render-pdf.js: a stack tracks open nesting levels so every <li> and <ul>
-  // is closed exactly once.
+  // render-pdf-2026.js: a stack tracks open nesting levels so every <li> and
+  // <ul> is closed exactly once, even when a level is skipped (H2 → H4) or the
+  // document starts deeper than H2.
   const lines = ['<nav id="TOC"><div class="toc-label">CONTENTS</div>'];
-  const stack = [];
-  let prev = 0;
+  const stack = [];   // levels of the open <ul>s; each holds one open <li>
 
   for (const entry of tocEntries) {
     const level = Math.max(2, Math.min(entry.level, 4));
-    if (prev === 0) {
-      lines.push('<ul>');
-      stack.push(level);
-    } else if (level > prev) {
-      lines.push('<ul>');
-      stack.push(level);
-    } else if (level === prev) {
+    while (stack.length && stack[stack.length - 1] > level) {
+      lines.push('</li></ul>');
+      stack.pop();
+    }
+    if (stack.length && stack[stack.length - 1] === level) {
       lines.push('</li>');
     } else {
-      while (stack.length && stack[stack.length - 1] > level) {
-        lines.push('</li></ul>');
-        stack.pop();
-      }
-      lines.push('</li>');
+      lines.push('<ul>');
+      stack.push(level);
     }
     const anchor = `${idPrefix}${entry.id}`;
     const num = entry.number ? displayNumber(entry.number, level) : '';
     lines.push(`<li><a href="#${anchor}"><span class="toc-num">${num}</span><span class="toc-title">${escapeHtml(entry.text)}</span></a>`);
-    prev = level;
   }
 
   while (stack.length) { lines.push('</li></ul>'); stack.pop(); }
@@ -231,7 +230,9 @@ function bodyHtml(parsed, idPrefix = '') {
         return `<pre class="mermaid" style="${style}">${escaped}</pre>\n`;
       }
       const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      const cls = lang ? ` class="language-${lang}"` : '';
+      // the class takes the fence info string's first word only
+      const word = (lang || '').match(/^\S*/)[0];
+      const cls = word ? ` class="language-${escapeHtml(word)}"` : '';
       return `<pre><code${cls}>${escaped}</code></pre>\n`;
     },
 
@@ -824,24 +825,27 @@ img { max-width: 100%; height: auto; }
 // the raw markdown: a 4-backtick fence showing a ```mermaid example is NOT a
 // mermaid diagram, and ~~~mermaid fences must still count. We check the fenced
 // code tokens' lang directly (parseMermaidOpts is avoided here so its stderr
-// warnings on invalid opts don't fire during mere detection).
+// warnings on invalid opts don't fire during mere detection). Fences nested in
+// blockquotes and list items render as diagrams too, so the walk recurses.
 function docHasMermaid(parsed) {
-  return (parsed.tokens || []).some(
-    t => t.type === 'code' && /^mermaid\b/.test((t.lang || '').trim()),
-  );
+  const walk = list => (list || []).some(t =>
+    (t.type === 'code' && /^mermaid\b/.test((t.lang || '').trim()))
+    || walk(t.tokens)
+    || (t.items || []).some(i => walk(i.tokens)));
+  return walk(parsed.tokens);
 }
 
 // ── Mermaid script ───────────────────────────────────────────────────────────
 
 // Inline the mermaid UMD bundle so diagrams render offline — the HTML stays
 // fully self-contained. Only included when the document has mermaid blocks.
-function mermaidScript() {
+function mermaidScript(nonce) {
   const bundle = fs.readFileSync(require.resolve('mermaid/dist/mermaid.min.js'), 'utf8')
     // A literal </script in the bundle would prematurely close our inline tag.
     .replace(/<\/script/gi, '<\\/script');
   return `
-<script>${bundle}</script>
-<script>
+<script nonce="${nonce}">${bundle}</script>
+<script nonce="${nonce}">
   mermaid.initialize({ startOnLoad: false, theme: 'neutral' });
   mermaid.run({ querySelector: '.mermaid' });
 </script>`;
@@ -849,10 +853,16 @@ function mermaidScript() {
 
 // ── Page template ────────────────────────────────────────────────────────────
 
+// Markdown may carry raw HTML (<script>, on*= handlers, javascript: links,
+// <iframe>/<object>). The policy lets only our own nonce-carrying scripts run.
+// Images, styles and fonts stay unrestricted: they are data: URIs and inline
+// styles throughout, and mermaid injects styles.
 function htmlPage({ title, headerTitle, footerTitle, fontsCss, bodyContent, hasMermaid }) {
+  const nonce = crypto.randomBytes(16).toString('base64');
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
+<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}'; object-src 'none'; frame-src 'none'">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(title)}</title>
@@ -873,7 +883,7 @@ ${bodyContent}
   <span>${escapeHtml(footerTitle)}</span>
   <span class="footer-brand">Cognizone</span>
 </footer>
-${hasMermaid ? mermaidScript() : ''}
+${hasMermaid ? mermaidScript(nonce) : ''}
 </body>
 </html>`;
 }
