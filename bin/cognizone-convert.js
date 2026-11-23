@@ -16,7 +16,10 @@ if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
 Usage: cognizone-convert <input.md|folder> [output] [options]
 
 Converts a Markdown file (or folder of files) to a branded Cognizone document.
-When a folder is given, all .md files are merged into a single PDF or HTML file.
+When a folder is given, all .md/.markdown files are merged into a single PDF or
+HTML file. Without [output], a file is written next to the input
+(document.md → document.pdf); a folder gives <folder>.pdf in the
+current folder.
 
 Options:
   -f, --format <pdf|docx|html>  Output format (default: pdf, or the output
@@ -25,16 +28,17 @@ Options:
   -b, --brand <2026|classic>    Brand (default: 2026, or the document's
                                 \`brand:\` frontmatter field). classic is the
                                 old brand, kept for a short transition.
-      --no-external-links       Render links to other files or sites as plain
-                                text; in-document #heading links still work.
+      --no-external-links       Render links to other files or sites (raw HTML
+                                <a href> too) as plain text; in-document
+                                #heading links still work.
       --relative-links          Point relative links to other .md files at their
                                 converted file (a.md#x → a.docx), assuming the
                                 delivery keeps the repo's folder layout. The
                                 #section is dropped. Single files, docx/html.
       --link-base <url>         Like --relative-links, but links become absolute:
-                                <url> is the web address (e.g. SharePoint folder)
-                                of the folder you run the command from. Needed
-                                for Word for the web, which can't follow
+                                <url> is the http(s) address (e.g. a SharePoint
+                                folder) of the folder you run the command from.
+                                Needed for Word for the web, which can't follow
                                 relative links.
   -v, --version                 Print version and exit
   -h, --help                    Show this help message

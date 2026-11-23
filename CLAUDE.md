@@ -8,7 +8,7 @@ This is the **Cognizone branded document conversion** package (`@cognizone/brand
 
 Published to GitHub Packages. Installed via Git URL: `npm install -g cognizone/cognizone-brand-docs`. CLI command: `cognizone-convert`.
 
-Supports single-file conversion (PDF, DOCX, or HTML) and folder merge (all `.md` files → single PDF or HTML).
+Supports single-file conversion (PDF, DOCX, or HTML) and folder merge (all `.md` / `.markdown` files → single PDF or HTML).
 
 ## Repo Structure
 
@@ -40,7 +40,7 @@ package.json              # npm package config
 
 ## Testing
 
-`npm test` runs `test/run.js` (no framework). It regenerates the tracked samples in `test/output/` as a side effect — only commit those when the sample outputs should change (the README screenshots in `docs/screenshots/` are cropped from `test/output/brand-2026.pdf` with `pdftoppm -r 150`). Classic-brand tests pass `--brand classic` explicitly. Add a regression test there for every rendering bug fixed. The tests shell out to `unzip` and write to `/dev/null`, so they run on macOS/Linux (or WSL), not plain Windows.
+`npm test` runs `test/run.js` (no framework). It regenerates the tracked samples in `test/output/` as a side effect — only commit those when the sample outputs should change (the README screenshots in `docs/screenshots/` are cropped from `test/output/brand-2026.pdf` with `pdftoppm -r 150`). Classic-brand tests pass `--brand classic` explicitly. Add a regression test there for every rendering bug fixed. The tests shell out to `unzip` and write to `/dev/null`, so they run on macOS/Linux (or WSL), not plain Windows. The PDF text and TOC page-number checks use `pdftotext` (poppler) when it is installed and are skipped without it. Besides the fixture, the tests cover the CLI wrapper (`bin/cognizone-convert.js --help` / `--version`) and a 2026 PDF folder merge.
 
 ## Cross-platform
 
@@ -50,18 +50,18 @@ The tool itself must work on macOS, Windows and Linux: no shell scripts, spawn N
 
 `bin/convert.js` orchestrates the conversion (pure Node.js, no bash or pandoc):
 
-1. **Parse** (`parse.js`) — `gray-matter` extracts frontmatter; `marked.lexer()` produces token tree; walks tokens to compute section numbers + TOC entries
+1. **Parse** (`parse.js`) — `gray-matter` extracts frontmatter (YAML only: `---js` / `---javascript` throw); `marked.lexer()` produces token tree; the title H1 is spliced out of the tokens only when it is the first block (leading blank lines and raw HTML blocks such as a comment are skipped), so a later H1 and `#` lines in code fences stay; `rewriteLinks()` runs; walks tokens to compute section numbers + TOC entries. Heading ids are unique against every id issued (suffix bumped until free, `section` when the heading has no usable characters); TOC text comes from the heading's inline tokens (link text without the URL, entities decoded by `decodeEntities()`, which `render-docx-2026.js` imports too)
 2. **Route** — based on `--format` flag, delegates to `render-pdf.js`, `render-docx.js`, or `render-html.js` (or their `-2026` copies when the brand is `2026`: `--brand` flag first, then frontmatter `brand`, default `2026`)
 
 The path sections below name the classic files; the `-2026` copies follow the same structure, with the differences listed under "Brands".
 
 ### Link options (`rewriteLinks()` in `parse.js`)
 
-`--no-external-links`, `--relative-links` and `--link-base` rewrite link tokens in place after lexing, so every renderer gets them; renderers must render `parsed.tokens`, never re-lex `mdNoH1` (the 2026 PDF renderer did, and missed the rewrite). Relative `.md` links become the converted sibling (`#section` dropped); with `--link-base` they become `<url>` + their path from the cwd, plus `?web=1` on `*.sharepoint.com` (SharePoint downloads a bare file URL). `convert.js` `folderUrl()` turns a SharePoint `AllItems.aspx?id=` address into the folder URL. Out-of-cwd links: plain text with `--no-external-links`, else left relative. User docs: README "Links in delivered documents".
+`rewriteLinks()` always runs and rewrites link tokens in place after lexing, so every renderer gets the result; renderers must render `parsed.tokens`, never re-lex `mdNoH1` (the 2026 PDF renderer did, and missed the rewrite; the frozen classic PDF renderer still does, so classic PDFs get none of it). `javascript:`, `vbscript:` and `data:` links always become their text. In folder merges `anchorPrefix` turns `#x` into `#doc-{i}-x`. `--no-external-links` turns other non-`#` links into their text and also drops raw HTML `<a href>` tags, keeping their text and `#anchor` ones (`stripRawLinks()`). Relative `.md` links become the converted sibling (`#section` dropped); with `--link-base` they become `<url>` + their path from the cwd, plus `?web=1` on `*.sharepoint.com` (SharePoint downloads a bare file URL). `convert.js` `folderUrl()` requires an http(s) URL and turns a SharePoint `AllItems.aspx?id=` address into the folder URL; the `id` must be a `/`-rooted folder path on the same site. Out-of-cwd links: plain text with `--no-external-links`, else left relative. User docs: README "Links in delivered documents".
 
 ### Folder merge path (PDF and HTML)
 
-When the input is a directory, `convert.js` recursively finds all `.md` files (sorted alphabetically), parses each one, and calls `renderMergedPdf()` in `render-pdf.js` (or `renderMergedHtml()` in `render-html.js` when `--format html`). This produces a single file:
+When the input is a directory, `convert.js` recursively finds all `.md` / `.markdown` files, any case (sorted alphabetically), parses each one, and calls `renderMergedPdf()` in `render-pdf.js` (or `renderMergedHtml()` in `render-html.js` when `--format html`). This produces a single file:
 
 1. **Master cover page** — folder name as title, table listing all documents (number, ID, title)
 2. **Master TOC** — single table of contents; each document is a top-level entry with its headings nested below
@@ -70,7 +70,7 @@ When the input is a directory, `convert.js` recursively finds all `.md` files (s
 Key details:
 
 - Section numbering resets per document
-- Heading IDs are prefixed with `doc-{index}-` to avoid collisions across documents
+- Heading IDs are prefixed with `doc-{index}-` to avoid collisions across documents; `#heading` links get the same prefix (`anchorPrefix` in `parse.js`), so they keep working
 - Relative image paths are resolved per document — PDF uses absolute `file://` URLs (no `<base href>`); HTML embeds them as data URIs
 - Header shows the folder name; footer is empty (Puppeteer only supports one static header/footer template)
 - DOCX merge is not supported — folder input errors if `--format docx` is requested
@@ -84,7 +84,7 @@ Key details:
 
 ### DOCX path (`render-docx.js`)
 
-1. Pre-render mermaid blocks to PNG via Puppeteer (single browser session, one page per diagram)
+1. Pre-render mermaid blocks to PNG via Puppeteer (single browser session, one page per diagram); the 2026 renderer rasterizes SVG images to PNG in the same session
 2. Walk token tree directly to build `docx` library objects (no HTML intermediate); mermaid blocks become `ImageRun` elements
 3. Three sections: cover page (no header/footer) → TOC (native Word TOC field) → body
 4. Headers/footers with logo image + title / footer text + page numbers
@@ -97,8 +97,8 @@ Note: Word references fonts by name (can't embed TTFs). Roboto/Roboto Mono must 
 1. Same marked renderer approach as PDF (section-numbered headings, mermaid `<pre class="mermaid">` blocks)
 2. Assemble a single self-contained `.html` file — no Puppeteer, no external requests:
    - Roboto/Roboto Mono fonts and logo embedded as base64 data URIs
-   - Images (both `![alt](path)` and raw `<img>` tags) embedded as data URIs, resolved relative to the source file
-   - Mermaid UMD bundle inlined into a `<script>` (only when the document has mermaid blocks) so diagrams render offline
+   - Images (both `![alt](path)` and raw `<img>` tags) embedded as data URIs, resolved relative to the source file (2026: %-encoded paths such as `pic%20one.png` and single-quoted `src` work too)
+   - Mermaid UMD bundle inlined into a `<script>` (only when the document has mermaid blocks; 2026 also finds ones nested in blockquotes and list items) so diagrams render offline; in 2026 the `<script>` tags carry the CSP nonce
 3. Web-style layout instead of paged: sticky branded header, anchor-link TOC (no page numbers), footer at document end, `@media print` rules for browser printing
 
 HTML brand CSS lives in `render-html.js` (`STYLES` constant), mirroring `templates/styles.css` values.
@@ -130,6 +130,13 @@ The 2026 brand is the default and lives in full copies of the renderers: `bin/re
 - H2 headings carry a `CHAPTER 01` label above the title (`displayNumber()` in the PDF/HTML renderers, a separate label paragraph in DOCX); merged master-TOC entries show `DOCUMENT 01`.
 - DOCX contents page entries are **static**, not generated by Word (a Word-built TOC copies the heading's direct run formatting into the entries). Each entry is built from `parsed.tocEntries`; page numbers are `PAGEREF` fields to `_toc_n` bookmarks on the headings, wrapped in one `TOC \o "2-4"` field whose cached result is the styled entries. The numbers come from References → Update Table → "Update page numbers only", which repaginates first. Never update fields on open (`updateFields` / `w:dirty`): Word then rebuilds the TOC field in its default TOC styles, like "Update entire table", and fills bare PAGEREFs with 1.
 - DOCX blockquotes are a single-cell table (pink left border, sand fill), so the whole quote is one box whatever it contains.
+- DOCX images take their type and size from the file's bytes (`imageInfo()`: PNG, JPEG, GIF, BMP), not the extension; SVG is rasterized to PNG (DOCX path step 1); any other file is left out with a warning and shows `[alt]`. Images are at most 500px wide with their aspect ratio kept, and a raw `<img>` with only `width` or only `height` gets the other proportionally. %-encoded paths are decoded, and every `<img>` in a raw HTML block renders, inline `<img>` too.
+- DOCX ordered lists keep their start number (`3.` resumes at 3). Each gets its own numbering definition, allocated as it renders (`listRef()`), so lists inside quotes get one too; `buildNumberingConfig()` runs after the body.
+- A DOCX list item that starts with a block (heading, code fence, quote) shows its marker on its own line, and the block renders normally below it.
+- DOCX entities: fenced code is verbatim; inline code and prose are decoded once (`decodeEntities()` from `parse.js`).
+- 2026 HTML and the page the 2026 PDF is printed from carry a Content-Security-Policy meta: scripts run only with a per-run nonce, no objects or frames. Raw `<script>`, `on*=` handlers and `javascript:` URLs in the Markdown are inert, and `<iframe>` / `<object>` load nothing. Only the HTML's mermaid `<script>` tags carry the nonce; `templates/2026/pdf-print.js` evaluates the mermaid bundle through `page.evaluate` (an injected script tag would be blocked), and stops with an error if the document navigates to another page (e.g. `<meta http-equiv="refresh">`).
+- Fence info strings: only the first word becomes the `language-…` class, escaped. The PDF escapes mermaid source.
+- A PDF cover is exactly one page and content that does not fit is cut off; `pdf-print.js` warns on stderr when that happens (shorten `summary`). TOC page numbers count each cover as one page. TOC nesting stays well-formed when heading levels are skipped or a document starts below H2.
 - Word paragraph-border quirks to keep in mind: space-after is drawn *inside* the border box (put gaps in space-before instead), and adjacent paragraphs with identical borders and indents are merged into one box (alternate the indent by 1 twip to keep them apart).
 
 ## Document Frontmatter
@@ -273,7 +280,7 @@ cognizone-convert document.md --format docx      # → document.docx
 cognizone-convert document.md output.pdf         # custom output path
 cognizone-convert document.md out.docx           # format from the output extension (when no -f)
 cognizone-convert document.md -b classic         # old brand
-cognizone-convert document.md --no-external-links  # non-#anchor links → plain text (stripped in parse.js, all formats)
+cognizone-convert document.md --no-external-links  # non-#anchor links (raw <a href> too) → plain text (stripped in parse.js; all formats but classic PDF)
 cognizone-convert document.md --relative-links     # relative .md links → converted sibling (.docx/.html; PDF gets absolute file://)
 cognizone-convert specs/a.md --link-base <url>      # same, absolute: <url> is the web address of the cwd (SharePoint AllItems.aspx?id= accepted)
 
@@ -282,6 +289,8 @@ cognizone-convert docs/                          # → docs.pdf in CWD
 cognizone-convert docs/ -f html                  # → docs.html in CWD
 cognizone-convert docs/ merged-output.pdf        # custom output path
 ```
+
+The default single-file output sits next to the input with the extension replaced whatever its case (`X.MD` → `X.pdf`); the tool refuses to write over its input. Unknown options, an option missing its value and a third positional argument are errors. Folder merges take `.md` and `.markdown` files in any case.
 
 ## Publishing
 

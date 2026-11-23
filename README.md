@@ -8,13 +8,13 @@ Works on macOS, Linux, and Windows — no bash or pandoc required.
 
 - **PDF, Word, and HTML output** from a single Markdown source
 - **Self-contained HTML** — a single `.html` file with fonts, images, logo, and mermaid embedded; opens offline in any browser
-- **Folder merge** — pass a folder to combine all Markdown files into a single PDF or HTML file with a master cover page and TOC
+- **Folder merge** — pass a folder to combine all Markdown files (`.md`, `.markdown`) into a single PDF or HTML file with a master cover page and TOC
 - **Branded cover page** with document ID, title, and metadata table
 - **Auto-generated table of contents** with section numbers and page references
 - **Branded headers and footers** with logo, document title, client/project info, and page numbers
 - **Mermaid diagrams** — `\`\`\`mermaid` code blocks render as visual diagrams (flowcharts, sequence diagrams, etc.)
 - **Full Markdown support** — headings, tables, lists (nested/mixed), code blocks, blockquotes, images, links, inline formatting
-- **HTML `<img>` tags** with width/height for precise image sizing
+- **HTML `<img>` tags** with width/height for precise image sizing (give only one and the other follows the image's aspect ratio)
 - **YAML frontmatter** for document metadata (title, subtitle, summary, id, type, status, version, date, author, client, project, classification)
 - **Cognizone 2026 brand** — plum / cream colours, Calistoga titles, Roboto / Roboto Mono text, A4 layout (the old brand is still available with `-b classic` for a short transition)
 - **Cross-platform** — pure Node.js, no bash or pandoc dependency
@@ -65,16 +65,24 @@ cognizone-convert document.md -f docx                # short form
 cognizone-convert document.md output/custom-name.pdf # custom output path
 
 # Folder merge (PDF or HTML)
-cognizone-convert docs/                              # merges all .md files → docs.pdf
-cognizone-convert docs/ -f html                      # merges all .md files → docs.html
+cognizone-convert docs/                              # merges all .md/.markdown files → docs.pdf
+cognizone-convert docs/ -f html                      # merges all .md/.markdown files → docs.html
 cognizone-convert docs/ merged-output.pdf            # custom output path
 ```
 
-Without `-f`, an output path ending in `.pdf`, `.docx` or `.html` picks the format (`document.md out.docx` writes Word).
+Without `-f`, an output path ending in `.pdf`, `.docx` or `.html` picks the format (`document.md out.docx` writes Word). Without an output path, a single file is written next to the input with its extension replaced (`NOTES.MD` → `NOTES.pdf`). The tool refuses to write over its own input.
+
+An unknown option, an option without its value, or a third file argument is an error.
+
+A folder merge takes every `.md` and `.markdown` file (any case) in the folder and its subfolders, in alphabetical order.
 
 All output uses the 2026 Cognizone brand; no flag is needed.
 
 A Word file opens with `–` in place of the contents page numbers. To fill them in, choose **References → Update Table → Update page numbers only** in Word. Don't pick "Update entire table": it replaces the 2026 styling with Word's default look.
+
+Word output embeds PNG, JPEG, GIF and BMP images and converts SVG images to PNG. Any other file used as an image is left out with a warning and shows as `[alt text]`.
+
+Raw HTML in the Markdown can't run anything in 2026-brand HTML or PDF output: `<script>`, `on…=` handlers and `javascript:` links are inert, and `<iframe>` / `<object>` load nothing.
 
 ### Using it from Claude Code
 
@@ -103,7 +111,7 @@ project: REG+
 ---
 ```
 
-All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`, plus `subtitle`, `summary`, `classification` and `brand` (see [Brands](#brands)).
+The frontmatter must be YAML; `---js` / `---javascript` frontmatter is refused. All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`, plus `subtitle`, `summary`, `classification` and `brand` (see [Brands](#brands)).
 
 ## Brands
 
@@ -120,22 +128,22 @@ Extra optional frontmatter fields used by the 2026 cover and footer:
 | Field | Use |
 |---|---|
 | `subtitle` | Second title line, in pink |
-| `summary` | Paragraph under the title |
+| `summary` | Paragraph under the title. Keep it short: a PDF cover that doesn't fit on one page is cut off (the tool warns) |
 | `classification` | e.g. `Confidential`, shown on the cover and in the footer |
 
 The style spec is [`reference/brand-2026-spec.md`](reference/brand-2026-spec.md); the logo pack is in [`assets/brand-2026/`](assets/brand-2026/).
 
 ## Links in delivered documents
 
-Markdown in a repo links to GitHub, to other docs by relative path, and to headings in the same doc. A Word or PDF file handed to a client can't follow most of those, so three options control what happens to links. By default every link is kept as written.
+Markdown in a repo links to GitHub, to other docs by relative path, and to headings in the same doc. A Word or PDF file handed to a client can't follow most of those, so three options control what happens to links. By default every link is kept as written, except `javascript:`, `vbscript:` and `data:` links, which always become plain text.
 
 | Option | Effect |
 |---|---|
-| `--no-external-links` | Links to sites and other files become plain text (the text and its formatting stay). `#heading` links in the same document still work. |
+| `--no-external-links` | Links to sites and other files become plain text (the text and its formatting stay), raw HTML `<a href>` links too. `#heading` links in the same document still work. |
 | `--relative-links` | A relative link to another `.md` points at that doc's converted file: `../EVR-10/case-model.md#states` → `../EVR-10/case-model.docx`. |
 | `--link-base <url>` | As `--relative-links`, but the link is a full web address: `<url>` + the target's path from the folder you run the command from. |
 
-`--no-external-links` and `--link-base` work for PDF, Word and HTML; `--relative-links` is for Word and HTML (a PDF gets absolute paths on the machine that made it). `--relative-links` and `--link-base` apply to single files only (a folder merge is one file), and they drop the `#section`: the link opens the other doc at its start.
+`--no-external-links` and `--link-base` work for PDF, Word and HTML; `--relative-links` is for Word and HTML (a PDF gets absolute paths on the machine that made it). `--relative-links` and `--link-base` apply to single files only (a folder merge is one file), and they drop the `#section`: the link opens the other doc at its start. In a folder merge, `#heading` links still go to the heading in their own document.
 
 ### Word files on SharePoint
 
@@ -150,7 +158,7 @@ cognizone-convert specs/EVR-13/EVR-13-search.md -f docx --no-external-links \
   --link-base "https://<tenant>.sharepoint.com/sites/<site>/<library>/Forms/AllItems.aspx?id=..."
 ```
 
-- Paste the address straight from the browser's address bar while viewing the folder; the `AllItems.aspx?id=…` form is understood. A short "Copy link" sharing address (`/:f:/s/…`) has no folder path in it and does not work.
+- Paste the address straight from the browser's address bar while viewing the folder; the `AllItems.aspx?id=…` form is understood (its `id` must be a folder path starting with `/` on the same site). The address must start with `http://` or `https://`. A short "Copy link" sharing address (`/:f:/s/…`) has no folder path in it and does not work.
 - SharePoint links get `?web=1`, so the file opens in Word for the web instead of downloading.
 - A link to a doc outside the folder you run from can't be made absolute: with `--no-external-links` it becomes plain text, otherwise it stays relative (with a warning).
 - A link to a doc you don't upload is broken, and moving or renaming the SharePoint folder means rebuilding with the new address.
