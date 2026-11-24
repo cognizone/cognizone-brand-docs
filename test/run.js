@@ -94,6 +94,11 @@ const parsed = parseMarkdown(FIXTURE);
 
 assert('isSvg: a text file that merely contains <svg> is not an SVG',
   !isSvg(Buffer.from('PASSWORD=TOP_SECRET\n<div><svg xmlns="http://www.w3.org/2000/svg"></svg></div>')));
+{
+  const t = Date.now();
+  const rejected = !isSvg(Buffer.from(`<!DOCTYPE${'x'.repeat(200000)}`));
+  assert('isSvg: a malformed 200 KB doctype is rejected quickly (no quadratic regex)', rejected && Date.now() - t < 500, `${Date.now() - t} ms`);
+}
 assert('isSvg: <svg> root after a BOM, XML declaration, comment and doctype is an SVG',
   isSvg(Buffer.from('﻿<?xml version="1.0"?>\n<!-- made by hand -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd">\n<svg xmlns="http://www.w3.org/2000/svg"></svg>')));
 assert('attributes: "src=" inside another attribute\'s value is not the src',
@@ -1355,14 +1360,14 @@ try {
     fs.mkdirSync(mergeDir);
     fs.writeFileSync(path.join(mergeDir, 'a.md'), '---\ntitle: Raw anchors\n---\n\n## One\n\n'
       + 'Inline <a href="#one">quoted</a>, <a href=#one>bare</a> and <a href="#">top</a>.\n\n<div><a href=\'#one\'>block</a></div>\n\n'
-      + 'And <a title="go href=#one" href="#one">titled</a>, <a href="&#35;one">encoded</a>.\n');
+      + 'And <a title="go href=#one" href="#one">titled</a>, <a href="&#35;one">encoded</a>, <a href=" #one ">spaced</a>, <a href="#&#10;one">split</a>.\n');
     const merged = path.join(dir, 'raw-anchor-merge.html');
     const m = run([mergeDir, merged]);
     const mh = m.status === 0 ? fs.readFileSync(merged, 'utf8') : '';
-    assert('html merge: raw <a href="#one"> gets the document prefix (quoted, unquoted, block, "href=" in a title, &#35;-encoded), "#" alone stays',
+    assert('html merge: raw <a href="#one"> gets the document prefix (quoted, unquoted, block, "href=" in a title, &#35;-encoded, spaced, split by a newline), "#" alone stays',
       mh.includes('<a href="#doc-0-one">quoted</a>') && mh.includes('<a href="#doc-0-one">bare</a>')
       && mh.includes('<a href="#doc-0-one">block</a>') && mh.includes('<a href="#">top</a>')
-      && mh.includes('<a title="go href=#one" href="#doc-0-one">titled</a>') && mh.includes('<a href="#doc-0-one">encoded</a>') && mh.includes('id="doc-0-one"'), m.stderr);
+      && mh.includes('<a title="go href=#one" href="#doc-0-one">titled</a>') && mh.includes('<a href="#doc-0-one">encoded</a>') && mh.includes('<a href="#doc-0-one">spaced</a>') && mh.includes('<a href="#doc-0-one">split</a>') && mh.includes('id="doc-0-one"'), m.stderr);
   }
 
   // The PDF's temporary page lives in its own fresh folder (not a predictable name in
@@ -1376,7 +1381,7 @@ try {
       + '  if (typeof file === "string" && file.endsWith(".html")) fs.appendFileSync(process.env.TMP_SPY_LOG, file + "\\n");\n'
       + '  return write.call(this, file, ...rest);\n};\n');
     const md = write('tmp.md', '---\ntitle: Tmp\n---\n\n## One\n\nText.\n');
-    const r = run([md, path.join(dir, 'tmp.pdf')], { env: { ...process.env, TMPDIR: tmp, TMP_SPY_LOG: spyLog, NODE_OPTIONS: `--require ${spy}` } });
+    const r = run([md, path.join(dir, 'tmp.pdf')], { env: { ...process.env, TMPDIR: tmp, TMP_SPY_LOG: spyLog, NODE_OPTIONS: `--require ${JSON.stringify(spy)}` } });
     const written = fs.existsSync(spyLog) ? fs.readFileSync(spyLog, 'utf8').split('\n').filter(Boolean) : [];
     const left = fs.readdirSync(tmp);
     assert('pdf: the temporary page is written in a fresh cognizone-XXXXXX folder of TMPDIR',

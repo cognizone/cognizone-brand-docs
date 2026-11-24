@@ -95,7 +95,7 @@ function stripRawLinks(tokens) {
       if (tag[1] === '/') return dropped.pop() ? '' : tag;
       // a real href attribute, not "data-href" or "href=" inside another attribute's value
       const href = attrValue(tag, 'href');
-      const drop = href !== undefined && !decodeEntities(href).startsWith('#');
+      const drop = href !== undefined && !hrefValue(href).startsWith('#');
       dropped.push(drop);
       return drop ? '' : tag;
     });
@@ -129,10 +129,14 @@ function absoluteLink(href, opts) {
   return url.href;
 }
 
+// An href attribute's value as the browser uses it: entities decoded, leading and trailing
+// spaces/control characters dropped, tabs and newlines inside removed (URL parsing)
+const hrefValue = v => decodeEntities(v).replace(/^[\u0000-\u0020]+|[\u0000-\u0020]+$/g, '').replace(/[\t\n\r]/g, '');
+
 // Folder merges: a raw <a href="#x"> (quoted or not) gets the prefix too; a bare "#" stays
-// The value is read decoded, as the browser does (href="&#35;one" is "#one")
+// The value is read as the browser does (href="&#35;one" and href=" #one " are "#one")
 const prefixRawAnchors = (html, prefix) => html.replace(tagRe('a'), tag => replaceAttr(tag, 'href', v => {
-  const href = decodeEntities(v);
+  const href = hrefValue(v);
   return /^#./.test(href) ? `#${prefix}${href.slice(1).replace(/&/g, '&amp;')}` : undefined;
 }));
 
@@ -192,7 +196,8 @@ function imageInfo(buf) {
 
 // An SVG document: <svg> is the root element, after only an XML declaration, comments,
 // a doctype and whitespace (a text file that merely contains "<svg" somewhere is not one)
-const isSvg = buf => /^(?:\s|<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(?:\[[^\]]*\])?[^>]*>)*<svg[\s>]/i
+// (each part matches one way only, so a malformed doctype is rejected in linear time)
+const isSvg = buf => /^(?:\s|<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(?:\[[^\]]*\][^>]*)?>)*<svg[\s>]/i
   .test(buf.toString('utf8').replace(/^﻿/, ''));
 
 // Raw HTML tags and their attributes. A quoted value is taken whole, so "src=" or ">"
