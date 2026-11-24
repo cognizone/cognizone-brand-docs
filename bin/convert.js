@@ -143,8 +143,8 @@ function refuseOverwrite(source, outputFile) {
 
 // Recent npm versions skip install scripts by default, so puppeteer's postinstall may
 // never have downloaded Chrome. Fetch it on first use instead (HTML needs no browser).
-function ensureChrome() {
-  const exe = require('puppeteer').executablePath();
+async function ensureChrome() {
+  const exe = await require('puppeteer').executablePath();
   if (fs.existsSync(exe)) return;
   console.error('Chrome for rendering is not installed yet; downloading it once (npm skipped puppeteer\'s install script)...');
   execFileSync(process.execPath, [require.resolve('puppeteer/install.mjs')], { stdio: 'inherit' });
@@ -175,7 +175,7 @@ async function main() {
     console.error('Folder input only supports pdf and html output.');
     process.exit(1);
   }
-  if (format !== 'html') ensureChrome();
+  if (format !== 'html') await ensureChrome();
   if (isDirectory) {
     if (relativeLinks) console.warn('--relative-links / --link-base are ignored for folder merges (one output file).');
     const mdFiles = findMarkdownFiles(inputPath);

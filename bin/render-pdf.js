@@ -175,8 +175,11 @@ function footerText(doc) {
   return [doc.classification, doc.client, doc.project].filter(Boolean).join(' · ');
 }
 
+// The page goes in a fresh private folder (unpredictable name, no collision between two
+// runs); nothing depends on where it is: links, images and CSS are absolute or <base href>
 function printPdf(html, outputFile, headerTitle, footer, tmpName) {
-  const tmpHtml = path.join(os.tmpdir(), `${tmpName}-${Date.now()}.html`);
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cognizone-'));
+  const tmpHtml = path.join(tmpDir, `${tmpName}.html`);
   fs.writeFileSync(tmpHtml, html, 'utf8');
 
   // Resolve mermaid browser bundle path for Puppeteer injection
@@ -188,7 +191,7 @@ function printPdf(html, outputFile, headerTitle, footer, tmpName) {
       tmpHtml, outputFile, headerTitle, footer, ICON_PATH, mermaidJsPath,
     ], { stdio: 'inherit' });
   } finally {
-    try { fs.unlinkSync(tmpHtml); } catch { /* ignore */ }
+    fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 }
 
@@ -236,15 +239,18 @@ function renderPdf(parsed, outputFile) {
 // ── Merged PDF (folder input) ────────────────────────────────────────────────
 
 // The src is URL-encoded (marked turns `<pic one.png>` into pic%20one.png) and
-// may be entity-escaped: decode both, so pathToFileURL encodes exactly once.
+// may be entity-escaped: decode both, so pathToFileURL encodes exactly once. The src may
+// be double-quoted, single-quoted or unquoted, with spaces around "="; "data-src" is not it.
 function resolveImagePaths(html, inputDir) {
   return html.replace(
-    /(<img\s[^>]*src=)(["'])(?!data:|https?:|file:)((?:(?!\2).)+)\2/gi,
-    (_m, pre, _q, src) => {
+    /(<img\b[^>]*?\s)src\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi,
+    (m, pre, dq, sq, bare) => {
+      const src = dq ?? sq ?? bare;
+      if (!src || /^(data:|https?:|file:)/i.test(src)) return m;
       let file = src.replace(/&amp;/g, '&');
       try { file = decodeURIComponent(file); } catch { /* not URL-encoded */ }
       const abs = pathToFileURL(path.resolve(inputDir, file)).href;
-      return `${pre}"${abs.replace(/&/g, '&amp;')}"`;
+      return `${pre}src="${abs.replace(/&/g, '&amp;')}"`;
     },
   );
 }

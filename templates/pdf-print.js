@@ -92,13 +92,25 @@ const COVER_CONTENT_HEIGHT  = Math.floor(256 * 96 / 25.4);
   // Only the document itself may load as a page: raw HTML in the Markdown
   // (<meta http-equiv="refresh" content="0;url=some-local-file">) would otherwise
   // navigate away and get that file printed instead. Stop rather than print it.
+  // Nothing is fetched from the network (an image URL in the Markdown would tell its
+  // server when the document was converted, or reach a service only this machine can):
+  // only local files and embedded data load, like the Word output.
   let navigated = false;
+  const blocked = new Set();
   await page.setRequestInterception(true);
   page.on('request', req => {
-    if (!req.isNavigationRequest()) return req.continue();
-    if (!navigated) { navigated = true; return req.continue(); }
-    console.error(`The document tries to load another page (${req.url()}), e.g. through a <meta http-equiv="refresh"> in the Markdown; not printed.`);
-    process.exit(1);
+    const url = req.url();
+    if (req.isNavigationRequest()) {
+      if (!navigated) { navigated = true; return req.continue(); }
+      console.error(`The document tries to load another page (${url}), e.g. through a <meta http-equiv="refresh"> in the Markdown; not printed.`);
+      process.exit(1);
+    }
+    if (/^(file|data|blob):/i.test(url)) return req.continue();
+    if (!blocked.has(url)) {
+      blocked.add(url);
+      console.error(`[pdf] not loading a web address (the PDF uses local files only): ${url}`);
+    }
+    return req.abort();
   });
 
   await page.goto(pathToFileURL(htmlFile).href, { waitUntil: 'networkidle0' });

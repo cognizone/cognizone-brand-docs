@@ -7,7 +7,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const { parseMermaidOpts } = require('./mermaid-opts');
-const { decodeEntities } = require('./parse');
+const { decodeEntities, imageInfo, isSvg } = require('./parse');
 
 const {
   Document, Packer, Paragraph, TextRun, ExternalHyperlink, InternalHyperlink, ImageRun,
@@ -137,7 +137,8 @@ function listLevelStyle(level, bullet = false) {
 }
 
 // `start`: the list's first number (`3.` resumes at 3); docx also writes it as the
-// instance's level-0 startOverride
+// instance's startOverride of each level. Every level gets it: each ordered list has its
+// own definition and uses only the level of its depth (a nested list uses level 1, ...)
 function orderedListLevels(start = 1) {
   const LEVELS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
   return LEVELS.map(level => ({
@@ -145,7 +146,7 @@ function orderedListLevels(start = 1) {
     format: level % 3 === 0 ? LevelFormat.DECIMAL : level % 3 === 1 ? LevelFormat.LOWER_LETTER : LevelFormat.LOWER_ROMAN,
     text: `%${level + 1}.`,
     alignment: AlignmentType.LEFT,
-    ...(level === 0 ? { start } : {}),
+    start,
     style: listLevelStyle(level),
   }));
 }
@@ -179,39 +180,7 @@ function buildNumberingConfig(orderedListStarts) {
 let _inputDir = process.cwd();
 
 // ── Images ───────────────────────────────────────────────────────────────────
-// Type and pixel size from the file's own bytes (never its extension), or null when it
-// is not a PNG, JPEG, GIF or BMP
-function imageInfo(buf) {
-  if (buf.length >= 24 && buf.readUInt32BE(0) === 0x89504E47 && buf.readUInt32BE(4) === 0x0D0A1A0A) {
-    return { type: 'png', width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
-  }
-  if (buf.length >= 10 && /^GIF8[79]a$/.test(buf.toString('latin1', 0, 6))) {
-    return { type: 'gif', width: buf.readUInt16LE(6), height: buf.readUInt16LE(8) };
-  }
-  if (buf.length >= 30 && buf.toString('latin1', 0, 2) === 'BM'
-      && [40, 52, 56, 108, 124].includes(buf.readUInt32LE(14)) && buf.readUInt16LE(26) === 1) {
-    return { type: 'bmp', width: buf.readInt32LE(18), height: Math.abs(buf.readInt32LE(22)) };
-  }
-  if (buf.length >= 4 && buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) {
-    // Walk the marker segments to the start-of-frame (C0-CF, except DHT C4, JPG C8, DAC CC)
-    for (let i = 2; i + 9 < buf.length;) {
-      if (buf[i] !== 0xFF) return null;
-      const m = buf[i + 1];
-      if (m === 0xFF) { i++; continue; } // fill byte
-      if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
-        return { type: 'jpg', width: buf.readUInt16BE(i + 7), height: buf.readUInt16BE(i + 5) };
-      }
-      i += m === 0x01 || (m >= 0xD0 && m <= 0xD8) ? 2 : 2 + buf.readUInt16BE(i + 2);
-    }
-  }
-  return null;
-}
-
-const isSvg = (file, buf) => {
-  const text = buf.toString('utf8').replace(/^﻿/, '').trimStart();
-  return (path.extname(file).toLowerCase() === '.svg' || /^<(\?xml|svg)/i.test(text)) && /<svg[\s>]/i.test(text);
-};
-
+// The type comes from the file's bytes: imageInfo() / isSvg() in parse.js
 // src (as written, maybe %-encoded) → image file path, or null for a URL or missing file
 function resolveImageSrc(src) {
   if (!src || src.startsWith('http')) return null;
@@ -270,11 +239,13 @@ function imgTags(html) {
     const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
     return m ? decodeEntities(m[1] ?? m[2] ?? m[3]) : undefined;
   };
+  // only a positive size counts; zero, negative or no number is "not given"
+  const px = value => { const n = parseInt(value, 10); return n > 0 ? n : undefined; };
   return (html.match(/<img\b[^>]*>/gi) || []).map(tag => ({
     src: attr(tag, 'src'),
     alt: attr(tag, 'alt'),
-    width: parseInt(attr(tag, 'width'), 10) || undefined,
-    height: parseInt(attr(tag, 'height'), 10) || undefined,
+    width: px(attr(tag, 'width')),
+    height: px(attr(tag, 'height')),
   })).filter(img => img.src);
 }
 
@@ -709,8 +680,12 @@ function listItemToElements(item, ref, depth, mermaidImages = new Map(), width =
     ? first.tokens
     : [{ type: 'text', raw: item.text || '' }];
 
+  const firstRuns = inlineFirst ? inlineToRuns(firstParaTokens, quoteRun()) : [];
+  // Task list item ("- [x] Done"): marked drops the "[x] " from the text and sets
+  // item.task / item.checked; the state shows as ☑ / ☐ after the bullet or number
+  if (item.task) firstRuns.unshift(new TextRun({ text: item.checked ? '☑ ' : '☐ ', ...runProps(quoteRun()) }));
   elements.push(new Paragraph({
-    children: inlineFirst ? inlineToRuns(firstParaTokens, quoteRun()) : [],
+    children: firstRuns,
     numbering: { reference: ref, level: depth },
     spacing: { after: 80, line: BODY_LINE },
   }));

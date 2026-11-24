@@ -21,8 +21,8 @@ Works on macOS, Linux, and Windows — no bash or pandoc required. One step is m
 
 ## Requirements
 
-- [Node.js](https://nodejs.org/) ≥ 18 with npm (check with `node -v` and `npm -v`)
-- Access to the `cognizone/cognizone-brand-docs` GitHub repository (the package installs from it)
+- [Node.js](https://nodejs.org/) ≥ 22.12 with npm (check with `node -v` and `npm -v`)
+- The package installs from the `cognizone/cognizone-brand-docs` GitHub repository. The repository is public today, so no GitHub account is needed. It may be made private later; from then on your GitHub account needs read access to it.
 
 Works the same on macOS, Windows and Linux, except that Word contents page numbers are filled in automatically only on macOS with Microsoft Word.
 
@@ -51,7 +51,7 @@ Word documents reference fonts by name, so install [Calistoga](https://fonts.goo
 |---|---|
 | `command not found: cognizone-convert` | npm's global bin folder is not on your `PATH`. It is `$(npm prefix -g)/bin` on macOS/Linux and the `npm prefix -g` folder itself on Windows. Open a new terminal after changing `PATH`. |
 | `EACCES` / permission error on install (macOS/Linux) | Don't use `sudo`; install Node with a version manager ([Volta](https://volta.sh), [nvm](https://github.com/nvm-sh/nvm)) so global installs go to your home folder. |
-| 404 or authentication error on install | Check that your GitHub account has access to the Cognizone organisation. |
+| 404 or authentication error on install | The repository is public today, so this should not happen. If it has been made private since, check that your GitHub account has read access to `cognizone/cognizone-brand-docs`. |
 | `Could not find Chrome` | Run `npx puppeteer browsers install chrome`. On a minimal Linux install Chrome may also need system libraries; see the [Puppeteer troubleshooting guide](https://pptr.dev/troubleshooting). |
 | Word contents page shows `–` or wrong page numbers | The conversion printed `ACTION NEEDED`: Word could not fill them in. Choose **References → Update Table → Update page numbers only** in Word, or on macOS with Microsoft Word run `cognizone-docx-toc file.docx`. "Update entire table" replaces the 2026 styling with Word's default look. |
 
@@ -78,9 +78,13 @@ A folder merge takes every `.md` and `.markdown` file (any case) in the folder a
 
 All output uses the 2026 Cognizone brand; no flag is needed.
 
-Word output embeds PNG, JPEG, GIF and BMP images and converts SVG images to PNG. Any other file used as an image is left out with a warning and shows as `[alt text]`.
+Word output embeds PNG, JPEG, GIF and BMP images and converts SVG images to PNG. Any other file used as an image is left out with a warning and shows as `[alt text]`. HTML output embeds PNG, JPEG, GIF, WebP and SVG images; a file whose bytes are not one of these (whatever its extension) is not embedded, with a warning.
+
+Task list items (`- [x] Done`, `- [ ] Todo`) show ☑ / ☐ in Word output and a checkbox in PDF and HTML. HTML entities such as `&euro;` or `&mdash;` (the HTML 4 names) show as their characters in Word text and in contents entries.
 
 Raw HTML in the Markdown can't run anything in HTML or PDF output: `<script>`, `on…=` handlers and `javascript:` links are inert, and `<iframe>` / `<object>` load nothing.
+
+PDF output loads nothing from the web: an image or stylesheet at an `http(s)://` address is left out, with a warning (Word output shows `[alt text]` for it; HTML output keeps the address, so the browser loads it when the file is opened). Every format does read the local files the Markdown points at, so only convert Markdown you trust.
 
 ### Page numbers in a Word file's contents page
 
@@ -88,7 +92,7 @@ A new Word file has `–` where the contents page numbers go: only Word can work
 
 | The conversion ends with | What it means | What you do |
 |---|---|---|
-| `Contents page numbers filled in.` | Word opened the file and filled in the numbers. | Nothing. |
+| `Contents page numbers filled in.` | Word opened the file and filled in the numbers; the file was checked afterwards. | Nothing. |
 | `ACTION NEEDED: the contents page of … has no page numbers yet` | The numbers are still `–`. | Open the file in Word and choose **References → Update Table → Update page numbers only**. |
 
 Which one you get depends on the machine:
@@ -106,6 +110,7 @@ On macOS the automatic step can still end in `ACTION NEEDED`:
 - **"Grant File Access" dialog.** The first time Word is asked to open a file in a folder, it shows this dialog. Choose **Select…** and grant access to the folder; later files there go through without asking. If you cancel it, or don't answer within two minutes, the numbers are not filled in.
 - **The file is already open in Word.** Close it and convert again.
 - **Automation permission.** Your terminal app must be allowed to control Microsoft Word (System Settings → Privacy & Security → Automation).
+- **Word finished, but the numbers are still missing.** After Word saves the file it is checked: every contents entry must show a page number. If one still shows `–`, the step says so and the conversion ends in `ACTION NEEDED`.
 
 `cognizone-docx-toc file.docx` runs the automatic step on its own for a file made earlier (macOS with Word only).
 
@@ -141,7 +146,7 @@ project: REG+
 ---
 ```
 
-The frontmatter must be YAML; `---js` / `---javascript` frontmatter is refused. All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`, plus `subtitle`, `summary` and `classification` (see [Cover and footer fields](#cover-and-footer-fields)).
+The frontmatter must be YAML (or JSON, opened with `---json`); `---js` / `---javascript` frontmatter is refused. All fields are optional. Supported frontmatter fields: `title`, `id`, `type`, `status`, `version`, `date`, `author`, `client`, `project`, plus `subtitle`, `summary` and `classification` (see [Cover and footer fields](#cover-and-footer-fields)).
 
 ### Cover and footer fields
 

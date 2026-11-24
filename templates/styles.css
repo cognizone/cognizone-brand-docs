@@ -409,6 +409,11 @@ ol > li {
 
 img {
   max-width: 100%;
+}
+
+/* height="…" alone sets the height (the width follows); otherwise keep the aspect ratio.
+   :where() keeps the specificity of a bare img, so .cover-lockup img still sets its own height */
+img:where(:not([height]), [width]) {
   height: auto;
 }
 

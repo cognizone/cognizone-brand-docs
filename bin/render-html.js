@@ -9,6 +9,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { marked } = require('marked');
 const { parseMermaidOpts } = require('./mermaid-opts');
+const { imageInfo, isSvg } = require('./parse');
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 const ICON_PATH = path.join(TEMPLATES_DIR, 'icon.png');
@@ -32,6 +33,14 @@ const MIME_TYPES = {
 // crafted markdown reference like ![x](../../.ssh/id_rsa) from smuggling
 // arbitrary file bytes into the shareable HTML.
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
+
+// The extension is not enough (a text file named leak.png, a .png symlink to anything):
+// the bytes must be a PNG, JPEG, GIF, WebP or SVG image too
+const isWebp = buf => buf.length >= 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP';
+function isImageFile(file) {
+  const buf = fs.readFileSync(file);
+  return ['png', 'jpg', 'gif'].includes(imageInfo(buf)?.type) || isWebp(buf) || isSvg(file, buf);
+}
 
 function mimeType(filePath) {
   const ext = path.extname(filePath).toLowerCase();
@@ -73,28 +82,49 @@ function buildFontsCss() {
 // embedded data URI. Relative paths are resolved against the document's dir.
 // The src may be URL-encoded (pic%20one.png for `pic one.png`): try the decoded
 // name first, then the literal one.
+// A Markdown image is resolved twice (its renderer, then embedRawImages over the
+// body), so each warning is printed once per file.
+const warned = new Set();
+function warnOnce(absPath, msg) {
+  if (warned.has(absPath)) return;
+  warned.add(absPath);
+  console.warn(msg);
+}
+
 function resolveImageSrc(src, inputDir) {
   if (/^(https?:|data:|file:)/i.test(src)) return src;
   let decoded = src;
   try { decoded = decodeURIComponent(src); } catch { /* not URL-encoded */ }
-  const absPath = [decoded, src].map(p => path.resolve(inputDir, p)).find(p => fs.existsSync(p));
+  // A file only: a folder named like an image (x.png) is left alone
+  const absPath = [decoded, src].map(p => path.resolve(inputDir, p))
+    .find(p => fs.statSync(p, { throwIfNoEntry: false })?.isFile());
   if (!absPath) return src;
   // Only embed recognised image types. Anything else (e.g. a .txt or a key
   // file) is left as-is so we never inline arbitrary file bytes.
   const ext = path.extname(absPath).toLowerCase();
   if (!IMAGE_EXTS.has(ext)) {
-    console.warn(`[html] skipping non-image reference (not embedded): ${src}`);
+    warnOnce(absPath, `[html] skipping non-image reference (not embedded): ${src}`);
+    return src;
+  }
+  if (!isImageFile(absPath)) {
+    warnOnce(absPath, `[html] skipping reference that is not a PNG, JPEG, GIF, WebP or SVG image (not embedded): ${src}`);
     return src;
   }
   return dataUri(absPath);
 }
 
 // Raw HTML <img> tags in the markdown pass through marked untouched — embed
-// their relative src paths as data URIs too.
+// their relative src paths as data URIs too. The src may be double-quoted, single-quoted
+// or unquoted, with spaces around "=" (as imgTags() in render-docx.js); "data-src" is not it.
 function embedRawImages(html, inputDir) {
   return html.replace(
-    /(<img\s[^>]*src=)(["'])(?!data:|https?:|file:)((?:(?!\2).)+)\2/gi,
-    (_m, pre, q, src) => pre + q + resolveImageSrc(src, inputDir) + q,
+    /(<img\b[^>]*?\s)src\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi,
+    (m, pre, dq, sq, bare) => {
+      const src = dq ?? sq ?? bare;
+      if (!src || /^(data:|https?:|file:)/i.test(src)) return m;
+      const q = sq !== undefined ? "'" : '"';
+      return `${pre}src=${q}${resolveImageSrc(src, inputDir)}${q}`;
+    },
   );
 }
 
@@ -163,14 +193,16 @@ function coverPageHtml(doc, attrs = '') {
 </div>`;
 }
 
-function tocHtml(tocEntries, idPrefix = '') {
+// nav: the <nav> attributes. Only the master contents of a merge (or the single
+// document's) is id="TOC"; the per-document ones are class="doc-toc" (same styling)
+function tocHtml(tocEntries, idPrefix = '', nav = 'id="TOC"') {
   if (!tocEntries.length) return '';
 
   // Build nested list from flat entries (H2 → H4). Mirrors buildToc in
   // render-pdf.js: a stack tracks open nesting levels so every <li> and
   // <ul> is closed exactly once, even when a level is skipped (H2 → H4) or the
   // document starts deeper than H2.
-  const lines = ['<nav id="TOC"><div class="toc-label">CONTENTS</div>'];
+  const lines = [`<nav ${nav}><div class="toc-label">CONTENTS</div>`];
   const stack = [];   // levels of the open <ul>s; each holds one open <li>
 
   for (const entry of tocEntries) {
@@ -458,12 +490,12 @@ body {
 
 /* ── TOC ────────────────────────────────────────────────────────────────────*/
 
-#TOC {
+:is(#TOC, .doc-toc) {
   margin-bottom: 48px;
   padding-top: 8px;
 }
 
-#TOC .toc-label {
+:is(#TOC, .doc-toc) .toc-label {
   font-family: 'Roboto Mono', monospace;
   font-size: 8.5pt;
   font-weight: 700;
@@ -472,27 +504,27 @@ body {
   margin: 0 0 10pt 0;
 }
 
-#TOC ul {
+:is(#TOC, .doc-toc) ul {
   list-style: none;
   padding-left: 0;
   margin: 0;
 }
 
-#TOC li {
+:is(#TOC, .doc-toc) li {
   margin: 0;
 }
 
-#TOC li::before {
+:is(#TOC, .doc-toc) li::before {
   content: none;
 }
 
-#TOC a {
+:is(#TOC, .doc-toc) a {
   display: flex;
   align-items: baseline;
   text-decoration: none;
 }
 
-#TOC a:hover .toc-title {
+:is(#TOC, .doc-toc) a:hover .toc-title {
   color: var(--blue);
 }
 
@@ -502,13 +534,13 @@ body {
 }
 
 /* Top-level entries (H2): "CHAPTER 01" in a 26mm number column, ruled below */
-#TOC > ul > li > a {
+:is(#TOC, .doc-toc) > ul > li > a {
   padding-bottom: 3pt;
   border-bottom: 0.25pt solid var(--rule);
   margin-bottom: 7pt;
 }
 
-#TOC > ul > li > a .toc-num {
+:is(#TOC, .doc-toc) > ul > li > a .toc-num {
   flex: 0 0 26mm;
   font-family: 'Roboto Mono', monospace;
   font-size: 8pt;
@@ -516,31 +548,31 @@ body {
   color: var(--pink-deep);
 }
 
-#TOC > ul > li > a .toc-title {
+:is(#TOC, .doc-toc) > ul > li > a .toc-title {
   font-size: 10.5pt;
   color: var(--plum);
 }
 
 /* Sub-entries (H3 and deeper): indented to the text column, no rule */
-#TOC ul ul {
+:is(#TOC, .doc-toc) ul ul {
   padding-left: 26mm;
 }
 
-#TOC ul ul ul {
+:is(#TOC, .doc-toc) ul ul ul {
   padding-left: 9mm;
   margin-top: 3pt;
 }
 
 /* Same gap before the next chapter as after a chapter's rule */
-#TOC > ul > li > ul {
+:is(#TOC, .doc-toc) > ul > li > ul {
   margin-bottom: 11pt;
 }
 
-#TOC ul ul li {
+:is(#TOC, .doc-toc) ul ul li {
   margin-bottom: 3pt;
 }
 
-#TOC ul ul .toc-num {
+:is(#TOC, .doc-toc) ul ul .toc-num {
   flex: 0 0 auto;
   min-width: 9mm;
   padding-right: 4pt;
@@ -549,7 +581,7 @@ body {
   color: var(--muted);
 }
 
-#TOC ul ul .toc-title {
+:is(#TOC, .doc-toc) ul ul .toc-title {
   font-size: 9.5pt;
   color: var(--ink);
 }
@@ -758,7 +790,10 @@ ol > li::marker { color: var(--pink-deep); font-style: normal; }
 
 /* ── Images ─────────────────────────────────────────────────────────────────*/
 
-img { max-width: 100%; height: auto; }
+img { max-width: 100%; }
+/* height="…" alone sets the height (the width follows); otherwise keep the aspect ratio.
+   :where() keeps the specificity of a bare img, so .cover-lockup img still sets its own height */
+img:where(:not([height]), [width]) { height: auto; }
 
 /* ── Merged doc dividers ────────────────────────────────────────────────────*/
 
@@ -814,7 +849,7 @@ img { max-width: 100%; height: auto; }
   .doc-header { position: static; }
   .page-content { box-shadow: none; padding: 0; max-width: none; margin: 0; }
   .cover-page { border-bottom: none; break-after: page; }
-  #TOC { break-after: page; }
+  :is(#TOC, .doc-toc) { break-after: page; }
   table, pre, .mermaid { break-inside: avoid; }
   thead { display: table-header-group; }
 }
@@ -919,7 +954,7 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   const hasMermaid = parsedDocs.some(docHasMermaid);
   // Master cover
   const masterCoverRows = parsedDocs.map((d, i) =>
-    `<tr><td>${String(i + 1).padStart(2, '0')}</td><td>${escapeHtml(d.id)}</td><td><a href="#doc-${i}-cover">${escapeHtml(d.title)}</a></td></tr>`
+    `<tr><td>${String(i + 1).padStart(2, '0')}</td><td>${escapeHtml(d.id)}</td><td><a href="#doc-${i}">${escapeHtml(d.title)}</a></td></tr>`
   ).join('');
 
   const masterCover = `
@@ -940,7 +975,7 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   const allTocEntries = [];
   parsedDocs.forEach((d, i) => {
     const docPrefix = `doc-${i}-`;
-    allTocEntries.push({ level: 2, text: d.title, id: `${docPrefix}cover`, number: `DOCUMENT ${String(i + 1).padStart(2, '0')}` });
+    allTocEntries.push({ level: 2, text: d.title, id: `doc-${i}`, number: `DOCUMENT ${String(i + 1).padStart(2, '0')}` });
     d.tocEntries.forEach(e => allTocEntries.push({ ...e, level: Math.min(e.level + 1, 4), id: `${docPrefix}${e.id}`, number: `${i + 1}.${e.number}` }));
   });
 
@@ -949,8 +984,9 @@ function renderMergedHtml(parsedDocs, inputDir, outputFile) {
   // Per-document sections
   const docSections = parsedDocs.map((d, i) => {
     const docPrefix = `doc-${i}-`;
-    const docCover = coverPageHtml(d, ` id="${docPrefix}cover"`);
-    const docToc = tocHtml(d.tocEntries, docPrefix);
+    // the cover id is outside the doc-{i}-… heading ids (a "## Cover" is doc-{i}-cover), as in the merged PDF
+    const docCover = coverPageHtml(d, ` id="doc-${i}"`);
+    const docToc = tocHtml(d.tocEntries, docPrefix, 'class="doc-toc"');
     const docBody = bodyHtml(d, docPrefix);
     return `<div class="doc-section">${docCover}${docToc}<div class="body-content">${docBody}</div></div>`;
   }).join('\n');

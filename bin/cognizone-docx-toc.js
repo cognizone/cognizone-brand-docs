@@ -18,10 +18,16 @@ const SCRIPT = `on run argv
     -- Word would reuse the open copy and save its stale content over the new render.
     if (name of documents) contains fname then error fname & " is open in Word: close it and run again."
     open (POSIX file p)
-    -- If the open did not bring the file to the front (cancelled dialog, protected file),
-    -- there is no active document or it is some other one: never update, save or close that.
-    if (count of documents) is 0 or name of active document is not fname then error "Word did not open " & fname & "; nothing was changed. Check Word for a dialog waiting for an answer."
-    set d to active document
+    -- Work only on the document at this path. If the open failed (cancelled dialog,
+    -- protected file), there is none: never update, save or close another document,
+    -- even one of the same name.
+    try
+      set d to document fname
+      set opened to (posix full name of d is p)
+    on error
+      set opened to false
+    end try
+    if not opened then error "Word did not open " & fname & "; nothing was changed. Check Word for a dialog waiting for an answer."
     if (count of tables of contents of d) is 0 then
       close d saving no
       error fname & " has no contents page; nothing was changed."
@@ -32,6 +38,25 @@ const SCRIPT = `on run argv
   end tell
 end run
 `;
+
+// Did Word fill in the page numbers? Every PAGEREF field (the contents page entries)
+// must show a number as its result, the text between its "separate" and "end" field
+// characters; before Word runs that is the "–" placeholder. A contents page without
+// entries has no PAGEREF: nothing to check. A file unzip cannot read is not verified.
+function pageNumbersFilled(file) {
+  const r = spawnSync('unzip', ['-p', file, 'word/document.xml'], { encoding: 'utf8', maxBuffer: 1024 ** 3 });
+  if (r.status !== 0) return false;
+  const xml = r.stdout;
+  for (const m of xml.matchAll(/<w:instrText\b[^>]*>\s*PAGEREF\b/g)) {
+    const field = xml.slice(m.index);
+    const separate = field.indexOf('w:fldCharType="separate"');
+    const end = field.indexOf('w:fldCharType="end"');
+    if (separate === -1 || end < separate) return false;
+    const result = [...field.slice(separate, end).matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g)].map(t => t[1]).join('').trim();
+    if (!/^\d+$/.test(result)) return false;
+  }
+  return true;
+}
 
 const USAGE = 'usage: cognizone-docx-toc file.docx [...]';
 const args = process.argv.slice(2);
@@ -71,11 +96,16 @@ for (const f of args) {
     console.error(`not found: ${f}`);
     process.exit(1);
   }
-  const r = spawnSync('osascript', ['-', abs], { input: SCRIPT, stdio: ['pipe', 'inherit', 'inherit'] });
+  // Real path: Word reports the resolved one (/private/tmp, not /tmp)
+  const r = spawnSync('osascript', ['-', fs.realpathSync(abs)], { input: SCRIPT, stdio: ['pipe', 'inherit', 'inherit'] });
   if (r.error) {
     console.error(r.error.message);
     process.exit(1);
   }
   if (r.status !== 0) process.exit(r.status ?? 1); // null when osascript was killed by a signal
+  if (!pageNumbersFilled(abs)) {
+    console.error(`Word finished, but the contents page of ${f} still has no page numbers; nothing more can be done automatically.`);
+    process.exit(1);
+  }
   console.log(`page numbers updated: ${f}`);
 }

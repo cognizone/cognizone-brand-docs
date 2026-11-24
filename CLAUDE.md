@@ -17,7 +17,7 @@ bin/
   cognizone-convert.js    # CLI entry point — help/version, calls convert.js
   cognizone-docx-toc.js   # `cognizone-docx-toc` — has Word fill in DOCX contents page numbers (macOS + Word, AppleScript)
   convert.js              # Thin orchestrator — args/format, downloads Chrome on first use, parse + route to renderer
-  parse.js                # Shared parsing: frontmatter, lexing, section numbers, TOC
+  parse.js                # Shared parsing: frontmatter, lexing, section numbers, TOC; image byte checks
   render-pdf.js           # PDF renderer (HTML assembly + Puppeteer)
   render-docx.js          # DOCX renderer (token tree → docx Document)
   render-html.js          # HTML renderer (self-contained single file, no Puppeteer)
@@ -46,7 +46,9 @@ package.json              # npm package config
 
 The README's sample outputs are `docs/samples/brand-2026.{pdf,docx}` (tracked). `npm run samples` regenerates them: it runs the tests, then converts the test's fixture copy (`test/output/brand-2026.md`) with the real CLI, so on macOS with Word the Word sample gets its contents page numbers (Word may show "Grant File Access" for `docs/samples/` the first time). Run it only when the look of the output changes, and commit the result. The README screenshots in `docs/screenshots/` are cropped from `docs/samples/brand-2026.pdf` with `pdftoppm -r 150`.
 
-More on the tests: The tests shell out to `unzip` and write to `/dev/null`, so they run on macOS/Linux (or WSL), not plain Windows. The PDF text and TOC page-number checks use `pdftotext` (poppler) when it is installed and are skipped without it. Besides the fixture, the tests cover the CLI wrapper (`bin/cognizone-convert.js --help` / `--version`), a PDF folder merge, the removed `--brand` option's compatibility shim, and that every `package.json` `bin` is executable and `bin/cognizone-docx-toc.js` prints usage without arguments and with `--help`.
+More on the tests: The tests shell out to `unzip` and write to `/dev/null`, so they run on macOS/Linux (or WSL), not plain Windows. The PDF text and TOC page-number checks use `pdftotext` (poppler) when it is installed and are skipped without it. Besides the fixture, the tests cover the CLI wrapper (`bin/cognizone-convert.js --help` / `--version`), a PDF folder merge, the removed `--brand` option's compatibility shim, and that every `package.json` `bin` is executable and `bin/cognizone-docx-toc.js` prints usage without arguments and with `--help`. The Word page-number step is tested on macOS with Word installed (skipped otherwise) through a fake `osascript`: a shell script in `test/output/fake-osascript/`, first on the child's `PATH`, with `COGNIZONE_NO_WORD` removed. A probe must reach the fake before any of those tests runs; if it does not, the tests fail and nothing reaches the real `osascript`, so Word is never started. Off macOS one test checks that a docx conversion ends in `ACTION NEEDED`.
+
+`.github/workflows/test.yml` runs `npm test` on Ubuntu with Node 22 and 24 (poppler installed) on every push to `main` and every pull request. It does not gate publishing: `publish.yml` runs on tags only.
 
 ## Cross-platform
 
@@ -56,27 +58,27 @@ The tool itself must work on macOS, Windows and Linux: no shell scripts, spawn N
 
 `bin/convert.js` orchestrates the conversion (pure Node.js, no bash or pandoc):
 
-1. **Parse** (`parse.js`) — `gray-matter` extracts frontmatter (YAML only: `---js` / `---javascript` throw); `marked.lexer()` produces token tree; the title H1 is spliced out of the tokens only when it is the first block (leading blank lines and raw HTML blocks such as a comment are skipped), so a later H1 and `#` lines in code fences stay; `rewriteLinks()` runs; walks tokens to compute section numbers + TOC entries. Heading ids are unique against every id issued (suffix bumped until free, `section` when the heading has no usable characters); TOC text comes from the heading's inline tokens (link text without the URL, entities decoded by `decodeEntities()`, which `render-docx.js` imports too)
+1. **Parse** (`parse.js`) — `gray-matter` extracts frontmatter (YAML, or JSON after `---json`; `---js` / `---javascript` throw); `marked.lexer()` produces token tree; the title H1 is spliced out of the tokens only when it is the first block (leading blank lines and raw HTML blocks such as a comment are skipped), so a later H1 and `#` lines in code fences stay; `rewriteLinks()` runs; walks tokens to compute section numbers + TOC entries. Heading ids are unique against every id issued (suffix bumped until free, `section` when the heading has no usable characters); TOC text comes from the heading's inline tokens (link text without the URL, entities decoded by `decodeEntities()`, which `render-docx.js` imports too)
 2. **Route** — based on `--format` flag, delegates to `render-pdf.js`, `render-docx.js`, or `render-html.js`
 
 The removed `--brand` option is still parsed so old scripts keep working, and is deliberately left out of `--help`: `-b 2026` is ignored, any other value exits 1 with the removal message. A document with frontmatter `brand: classic` gets a one-line warning on stderr and is rendered in the 2026 brand.
 
 ### Link options (`rewriteLinks()` in `parse.js`)
 
-`rewriteLinks()` always runs and rewrites link tokens in place after lexing, so every renderer gets the result; renderers must render `parsed.tokens`, never re-lex the Markdown source (that misses the rewrite). `javascript:`, `vbscript:` and `data:` links always become their text. In folder merges `anchorPrefix` turns `#x` into `#doc-{i}-x`. `--no-external-links` turns other non-`#` links into their text and also drops raw HTML `<a href>` tags, keeping their text and `#anchor` ones (`stripRawLinks()`). Relative `.md` links become the converted sibling (`#section` dropped); with `--link-base` they become `<url>` + their path from the cwd, plus `?web=1` on `*.sharepoint.com` (SharePoint downloads a bare file URL). `convert.js` `folderUrl()` requires an http(s) URL and turns a SharePoint `AllItems.aspx?id=` address into the folder URL; the `id` must be a `/`-rooted folder path on the same site. Out-of-cwd links: plain text with `--no-external-links`, else left relative. User docs: README "Links in delivered documents".
+`rewriteLinks()` always runs and rewrites link tokens in place after lexing, so every renderer gets the result; renderers must render `parsed.tokens`, never re-lex the Markdown source (that misses the rewrite). `javascript:`, `vbscript:` and `data:` links always become their text. In folder merges `anchorPrefix` turns `#x` into `#doc-{i}-x`. `--no-external-links` turns other non-`#` links into their text and also drops raw HTML `<a href>` tags (a real `href` attribute, not `data-href`), keeping their text and `#anchor` ones (`stripRawLinks()`). Relative `.md` links become the converted sibling (`#section` dropped); with `--link-base` they become `<url>` + their path from the cwd, plus `?web=1` on `*.sharepoint.com` (SharePoint downloads a bare file URL). `convert.js` `folderUrl()` requires an http(s) URL and turns a SharePoint `AllItems.aspx?id=` address into the folder URL; the `id` must be a `/`-rooted folder path on the same site. Out-of-cwd links: plain text with `--no-external-links`, else left relative. User docs: README "Links in delivered documents".
 
 ### Folder merge path (PDF and HTML)
 
 When the input is a directory, `convert.js` recursively finds all `.md` / `.markdown` files, any case (sorted alphabetically), parses each one, and calls `renderMergedPdf()` in `render-pdf.js` (or `renderMergedHtml()` in `render-html.js` when `--format html`). This produces a single file:
 
 1. **Master cover page** — folder name as title, table listing all documents (number, ID, title)
-2. **Master TOC** — single table of contents; each document is a top-level entry with its headings nested below
+2. **Master TOC** — one table of contents for the whole file; each document is a top-level entry with its headings nested below. The PDF has only this one; the HTML also keeps each document's own contents after its cover (`<nav class="doc-toc">`; only the master is `id="TOC"`, the `STYLES` rules use `:is(#TOC, .doc-toc)`)
 3. **Per-document sections** — each document gets its own cover page (from its frontmatter) followed by its body content
 
 Key details:
 
 - Section numbering resets per document
-- Heading IDs are prefixed with `doc-{index}-` to avoid collisions across documents; `#heading` links get the same prefix (`anchorPrefix` in `parse.js`), so they keep working
+- Heading IDs are prefixed with `doc-{index}-` to avoid collisions across documents; `#heading` links get the same prefix (`anchorPrefix` in `parse.js`), raw `<a href="#heading">` tags too, so they keep working. Document covers are `id="doc-{index}"` (PDF and HTML), outside the heading ids, so a `## Cover` heading cannot collide
 - Relative image paths are resolved per document — PDF uses absolute `file://` URLs (no `<base href>`); HTML embeds them as data URIs
 - Header shows the folder name; footer is empty (the documents may belong to different clients/projects)
 - DOCX merge is not supported — folder input errors if `--format docx` is requested
@@ -86,7 +88,7 @@ Key details:
 1. Configure `marked.use()` heading + code renderer with pre-computed section numbers
 2. `marked.parser(tokens)` → body HTML (mermaid blocks emit `<pre class="mermaid">` instead of `<pre><code>`)
 3. Assemble full HTML (cover + TOC + body)
-4. Render via Puppeteer (`templates/pdf-print.js`) — mermaid.js runs in the page before TOC page calculation
+4. Render via Puppeteer (`templates/pdf-print.js`) — mermaid.js runs in the page before TOC page calculation. `printPdf()` writes the page into a fresh `fs.mkdtempSync()` folder of the temp dir and removes the folder afterwards
 
 ### DOCX path (`render-docx.js`)
 
@@ -103,7 +105,7 @@ Note: Word references fonts by name (can't embed TTFs). Calistoga/Roboto/Roboto 
 1. Same marked renderer approach as PDF (section-numbered headings, mermaid `<pre class="mermaid">` blocks)
 2. Assemble a single self-contained `.html` file — no Puppeteer, no external requests:
    - Calistoga/Roboto/Roboto Mono fonts and icon embedded as base64 data URIs
-   - Images (both `![alt](path)` and raw `<img>` tags) embedded as data URIs, resolved relative to the source file (%-encoded paths such as `pic%20one.png` and single-quoted `src` work too)
+   - Images (both `![alt](path)` and raw `<img>` tags) embedded as data URIs, resolved relative to the source file (%-encoded paths such as `pic%20one.png`, single-quoted, unquoted and spaced `src = …` work too; merged PDFs resolve raw `src` the same way). Only files whose bytes are a PNG, JPEG, GIF, WebP or SVG image are embedded (`imageInfo()` / `isSvg()` from `parse.js`, shared with the DOCX renderer, plus a WebP header check); anything else stays a reference, with one warning per file (a Markdown image is resolved twice: its renderer, then `embedRawImages()`). A folder named like an image (`x.png`) is not a file and stays a reference
    - Mermaid UMD bundle inlined into a `<script>` (only when the document has mermaid blocks, also ones nested in blockquotes and list items) so diagrams render offline; the `<script>` tags carry the CSP nonce
 3. Web-style layout instead of paged: sticky branded header, anchor-link TOC (no page numbers), footer at document end, `@media print` rules for browser printing
 
@@ -113,6 +115,7 @@ HTML brand CSS lives in `render-html.js` (`STYLES` constant), mirroring `templat
 
 - Inlines the icon as a data URI (external URLs/`@import` crash Puppeteer PDF printing)
 - Draws the branded header and footer as CSS `@page` margin boxes, not Puppeteer's `headerTemplate`/`footerTemplate` (those are painted on every page; the cover has none); needs Chrome ≥ 131 (bundled with puppeteer 24)
+- Loads nothing from the network: its request handler lets only `file:`, `data:` and `blob:` requests through and aborts the rest (web images, stylesheets, CSS backgrounds) with one `[pdf] not loading a web address` warning per URL
 - Forces `prefers-color-scheme: light` to prevent dark mode from affecting rendering
 - Evaluates mermaid.js through `page.evaluate` and runs `mermaid.run()` to render diagrams as SVGs before layout
 - Uses `page.evaluate()` to calculate and inject page numbers into TOC before printing
@@ -130,12 +133,13 @@ HTML brand CSS lives in `render-html.js` (`STYLES` constant), mirroring `templat
 - Styling source of truth: `reference/brand-2026-spec.md` (measured from `reference/brand-2026-reference.docx`, a content-free copy of a real 2026 document). `reference/private/` is git-ignored and holds the confidential original — never commit or quote it.
 - Logo pack as delivered: `assets/brand-2026/` (not shipped in the npm package; the renderers use `templates/icon.png`).
 - H2 headings carry a `CHAPTER 01` label above the title (`displayNumber()` in the PDF/HTML renderers, a separate label paragraph in DOCX); merged master-TOC entries show `DOCUMENT 01`.
-- DOCX contents page entries are **static**, not generated by Word (a Word-built TOC copies the heading's direct run formatting into the entries). Each entry is built from `parsed.tocEntries`; page numbers are `PAGEREF` fields to `_toc_n` bookmarks on the headings, wrapped in one `TOC \o "2-4"` field whose cached result is the styled entries. The numbers come from References → Update Table → "Update page numbers only", which repaginates first. `cognizone-docx-toc` (`bin/cognizone-docx-toc.js`) automates "Update page numbers only" through AppleScript, macOS + Word only; it takes `.docx` files only and stops without saving when Word did not open the file or the file has no contents page. `convert.js` `fillPageNumbers()` runs it after writing a `.docx` on macOS; when it is skipped (`COGNIZONE_NO_WORD=1`, which `test/run.js` sets so the tests never drive Word), not on macOS, or fails, the conversion still exits 0 and prints an `ACTION NEEDED` line on stderr with the manual steps. A `.docx` conversion must always end in one of the two: numbers filled in, or that line. Word is sandboxed: for a file in a folder it has not been granted, its `open` waits on a "Grant File Access" dialog (AppleEvent timeout after two minutes when nobody answers), so test the Word path in a granted folder, never the temp folder. Never update fields on open (`updateFields` / `w:dirty`): Word then rebuilds the TOC field in its default TOC styles, like "Update entire table", and fills bare PAGEREFs with 1.
+- DOCX contents page entries are **static**, not generated by Word (a Word-built TOC copies the heading's direct run formatting into the entries). Each entry is built from `parsed.tocEntries`; page numbers are `PAGEREF` fields to `_toc_n` bookmarks on the headings, wrapped in one `TOC \o "2-4"` field whose cached result is the styled entries. The numbers come from References → Update Table → "Update page numbers only", which repaginates first. `cognizone-docx-toc` (`bin/cognizone-docx-toc.js`) automates "Update page numbers only" through AppleScript, macOS + Word only; it takes `.docx` files only and stops without saving when Word did not open the file or the file has no contents page. It refuses when a document of the same name is already open, and after `open` it works only on the document whose `posix full name` is the file's real path (`fs.realpathSync`, so `/tmp` is `/private/tmp`), never on the active document, so another document is never updated, saved or closed. After `osascript` succeeds it checks the saved file (`pageNumbersFilled()`: `unzip -p` of `word/document.xml`; every `PAGEREF` field's result, the `<w:t>` text between its `separate` and `end` field characters, must be digits; no `PAGEREF` at all passes) and exits 1 with a one-line message when it is not, so `fillPageNumbers()` prints `ACTION NEEDED`. `convert.js` `fillPageNumbers()` runs it after writing a `.docx` on macOS; when it is skipped (`COGNIZONE_NO_WORD=1`, which `test/run.js` sets so the tests never drive Word), not on macOS, or fails, the conversion still exits 0 and prints an `ACTION NEEDED` line on stderr with the manual steps. A `.docx` conversion must always end in one of the two: numbers filled in, or that line. Word is sandboxed: for a file in a folder it has not been granted, its `open` waits on a "Grant File Access" dialog (AppleEvent timeout after two minutes when nobody answers), so test the Word path in a granted folder, never the temp folder. Never update fields on open (`updateFields` / `w:dirty`): Word then rebuilds the TOC field in its default TOC styles, like "Update entire table", and fills bare PAGEREFs with 1.
 - DOCX blockquotes are a single-cell table (pink left border, sand fill), so the whole quote is one box whatever it contains.
-- DOCX images take their type and size from the file's bytes (`imageInfo()`: PNG, JPEG, GIF, BMP), not the extension; SVG is rasterized to PNG (DOCX path step 1); any other file is left out with a warning and shows `[alt]`. Images are at most 500px wide with their aspect ratio kept, and a raw `<img>` with only `width` or only `height` gets the other proportionally. %-encoded paths are decoded, and every `<img>` in a raw HTML block renders, inline `<img>` too.
-- DOCX ordered lists keep their start number (`3.` resumes at 3). Each gets its own numbering definition, allocated as it renders (`listRef()`), so lists inside quotes get one too; `buildNumberingConfig()` runs after the body.
+- DOCX images take their type and size from the file's bytes (`imageInfo()` in `parse.js`: PNG, JPEG, GIF, BMP), not the extension; SVG is rasterized to PNG (DOCX path step 1); any other file is left out with a warning and shows `[alt]`. Images are at most 500px wide with their aspect ratio kept, and a raw `<img>` with only `width` or only `height` gets the other proportionally (only a positive size counts as given). PDF/HTML: `img:where(:not([height]), [width]) { height: auto; }`, so a height-only `<img>` keeps its height; `:where()` keeps a bare `img`'s specificity, so `.cover-lockup img` still wins. %-encoded paths are decoded, and every `<img>` in a raw HTML block renders, inline `<img>` too.
+- DOCX ordered lists keep their start number (`3.` resumes at 3), nested ones too. Each gets its own numbering definition, allocated as it renders (`listRef()`), so lists inside quotes get one too; `buildNumberingConfig()` runs after the body. A list uses only the level of its depth, so `orderedListLevels()` gives every level the start number.
+- DOCX task list items (`- [x]` / `- [ ]`; marked sets `item.task` / `item.checked` and drops the `[x] ` text) start with `☑ ` / `☐ ` after the bullet or number. PDF/HTML keep marked's disabled checkbox.
 - A DOCX list item that starts with a block (heading, code fence, quote) shows its marker on its own line, with the block below it. Code blocks, quotes, tables and images inside a list item start at the item's text indent and end at the right margin (`box` in `tokensToElements()`); a heading keeps its own position.
-- DOCX entities: fenced code is verbatim; inline code and prose are decoded once (`decodeEntities()` from `parse.js`).
+- DOCX entities: fenced code is verbatim; inline code and prose are decoded once (`decodeEntities()` from `parse.js`: numeric references and the HTML 4 entity names, exact case first, then lower case; unknown names stay as written).
 - The HTML output and the page the PDF is printed from carry a Content-Security-Policy meta: scripts run only with a per-run nonce, no objects or frames. Raw `<script>`, `on*=` handlers and `javascript:` URLs in the Markdown are inert, and `<iframe>` / `<object>` load nothing. Only the HTML's mermaid `<script>` tags carry the nonce; `templates/pdf-print.js` evaluates the mermaid bundle through `page.evaluate` (an injected script tag would be blocked), and stops with an error if the document navigates to another page (e.g. `<meta http-equiv="refresh">`).
 - Fence info strings: only the first word becomes the `language-…` class, escaped. The PDF escapes mermaid source.
 - A PDF cover is exactly one page and content that does not fit is cut off; `pdf-print.js` warns on stderr when that happens (shorten `summary`). TOC page numbers count each cover as one page. TOC nesting stays well-formed when heading levels are skipped or a document starts below H2.
@@ -200,6 +204,8 @@ npm install -g cognizone/cognizone-brand-docs
 ```
 
 To update, run the same command again.
+
+The repository is public today and may be made private later. From then on installing needs a GitHub account with read access to it; the README's Requirements and troubleshooting rows already say so. Keep install instructions worded for both cases.
 
 ### Usage
 

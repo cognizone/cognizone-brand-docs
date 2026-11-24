@@ -105,9 +105,14 @@ Inline code with brackets: `<html>` & `a < b`.
   - Bullet child
     1. Ordered grandchild
 
+### Task List
+
+- [x] Done task
+- [ ] Open task
+
 ## Blockquotes
 
-> This is a simple blockquote to verify italic styling and the green left border.
+> This is a simple blockquote to verify italic styling, the pink deep left bar and the sand fill.
 
 > Multi-line blockquote that spans more than one line to verify that longer
 > content wraps properly and maintains consistent styling throughout.
@@ -171,11 +176,11 @@ Content below the rule.
 
 ### Third-Level Heading (H3)
 
-Content under H3 to verify green color and section numbering.
+Content under H3 to verify plum color, the pink rule and section numbering.
 
 #### Fourth-Level Heading (H4)
 
-Content under H4 to verify dark2 color and deeper numbering (e.g. 7.1.1).
+Content under H4 to verify plum soft color and deeper numbering (e.g. 7.1.1).
 
 ### Another H3
 

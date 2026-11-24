@@ -215,12 +215,18 @@ try {
     'no meta-label cell containing "ID"');
   const htmlNoScripts = html.replace(/<script[\s\S]*?<\/script>/g, '');
   assert('html: raw <img> tags embedded too',
-    !/<img\s[^>]*src="(?!data:)/.test(htmlNoScripts),
+    !/<img\b[^>]*?\ssrc\s*=\s*(?:"(?!data:)|'(?!data:)|(?!["']|data:))/i.test(htmlNoScripts),
     'found an <img> with a non-data src');
   assert('html: mermaid inlined for offline use', html.includes('mermaid.initialize'));
-  assert('html: no external resource loads',
-    !/(?:src|href)="https?:\/\/(?!cogni\.zone)/.test(html.replace(/<script>[\s\S]*?<\/script>/g, '')),
-    'found external src/href outside cogni.zone links');
+  // Only what the browser fetches counts (src/srcset, <link href>, CSS url() / @import),
+  // not hyperlinks; the inline scripts (they carry a nonce) are not markup
+  const loads = [
+    /\ssrcset?\s*=\s*["']?\s*(?:https?:)?\/\//i,
+    /<link\b[^>]*?\shref\s*=\s*["']?\s*(?:https?:)?\/\//i,
+    /url\(\s*["']?\s*(?:https?:)?\/\//i,
+    /@import\s+(?:url\(\s*)?["']?\s*(?:https?:)?\/\//i,
+  ].filter(re => re.test(html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')));
+  assert('html: no external resource loads', !loads.length, `external load: ${loads.join(' ')}`);
 } catch (e) {
   assert('html: generation succeeds', false, e.stderr?.toString() || e.message);
 }
@@ -260,7 +266,7 @@ try {
   assert('html merge: master cover table lists docs',
     html.includes('master-cover-table') && html.includes('DOC-A') && html.includes('DOC-B'));
   assert('html merge: doc-prefixed anchors present',
-    html.includes('id="doc-0-cover"') && html.includes('id="doc-1-cover"'));
+    html.includes('id="doc-0"') && html.includes('id="doc-1"'));
   assert('html merge: per-doc heading anchors prefixed',
     html.includes('id="doc-0-intro"') && html.includes('id="doc-1-overview"'));
 
@@ -275,7 +281,7 @@ try {
   // also accept a stray </li> with the next item outside its list)
   const { error, depth = {} } = tocStructure(masterNav);
   assert('html merge: TOC is a well-formed nested list',
-    !error && depth['doc-0-intro'] > depth['doc-0-cover'] && depth['doc-0-later'] === depth['doc-0-intro'],
+    !error && depth['doc-0-intro'] > depth['doc-0'] && depth['doc-0-later'] === depth['doc-0-intro'],
     error || JSON.stringify(depth));
 
   // Merged footer is empty (Puppeteer parity: single static footer, no client/project)
@@ -429,19 +435,17 @@ try {
 }
 
 // ── Test folder + docx still rejected ────────────────────────────────────────
-try {
-  execFileSync(process.execPath, [CONVERT, mergeDir, path.join(OUT_DIR, 'merged.docx'), '--format', 'docx'], { stdio: 'pipe' });
-  assert('edge: folder input rejects docx', false, 'should have thrown');
-} catch {
-  assert('edge: folder input rejects docx', true);
+{
+  const r = require('child_process').spawnSync(process.execPath, [CONVERT, mergeDir, path.join(OUT_DIR, 'merged.docx'), '--format', 'docx'], { encoding: 'utf8' });
+  assert('edge: folder input rejects docx',
+    r.status === 1 && r.stderr.includes('Folder input only supports pdf and html output.') && !fs.existsSync(path.join(OUT_DIR, 'merged.docx')), `${r.status} ${r.stderr}`);
 }
 
 // ── Test format flag validation ──────────────────────────────────────────────
-try {
-  execFileSync(process.execPath, [CONVERT, FIXTURE, '/dev/null', '--format', 'rtf'], { stdio: 'pipe' });
-  assert('edge: unknown format rejected', false, 'should have thrown');
-} catch {
-  assert('edge: unknown format rejected', true);
+{
+  const r = require('child_process').spawnSync(process.execPath, [CONVERT, FIXTURE, '/dev/null', '--format', 'rtf'], { encoding: 'utf8' });
+  assert('edge: unknown format rejected',
+    r.status === 1 && r.stderr.includes('Unknown format: rtf. Supported: pdf, docx, html'), `${r.status} ${r.stderr}`);
 }
 
 // ── 2026 brand ───────────────────────────────────────────────────────────────
@@ -854,7 +858,7 @@ try {
       !error && depth.mid > depth.next && depth.deep > depth.next && depth.last === depth.next, error || JSON.stringify(depth));
     const merged = path.join(OUT_DIR, 'review-toc-merged.html');
     execFileSync(process.execPath, [CONVERT, tocDir, merged], { stdio: 'pipe' });
-    const navs = fs.readFileSync(merged, 'utf8').match(/<nav id="TOC">[\s\S]*?<\/nav>/g) || [];
+    const navs = fs.readFileSync(merged, 'utf8').match(/<nav (?:id="TOC"|class="doc-toc")>[\s\S]*?<\/nav>/g) || [];
     const errors = navs.map(n => tocStructure(n).error).filter(Boolean);
     assert('2026 html merge: every TOC is a well-formed nested list', navs.length === 3 && !errors.length, errors.join('; '));
   } catch (e) {
@@ -1148,6 +1152,284 @@ try {
   } catch (e) {
     assert('review: 2026 pdf refuses a document that navigates away (meta refresh)',
       !fs.existsSync(out) && (e.stderr?.toString() || '').includes('tries to load another page'), e.stderr?.toString().slice(0, 200));
+  }
+}
+
+// ── Review round 3: entities, task lists, list starts, images, merges, links, temp files ──
+{
+  const { spawnSync } = require('child_process');
+  const dir = path.join(OUT_DIR, 'review-c');
+  fs.mkdirSync(dir);
+  const write = (name, text) => { const f = path.join(dir, name); fs.writeFileSync(f, text); return f; };
+  const run = (argv, opts = {}) => spawnSync(process.execPath, [CONVERT, ...argv], { encoding: 'utf8', ...opts });
+  const unzip = (file, part) => execFileSync('unzip', ['-p', file, part]).toString();
+  const png = fs.readFileSync(path.join(__dirname, 'sample-image.png'));
+  fs.writeFileSync(path.join(dir, 'pic.png'), png);
+
+  // Named HTML entities (the HTML 4 set) are decoded in Word text and in contents entries
+  // (all formats); one pass only, unknown names and fenced code stay as written
+  {
+    const md = write('entities.md', '---\ntitle: Entities\n---\n\n## Price &euro;10 &mdash; total\n\n'
+      + 'Signs &euro; &mdash; &rarr; &eacute; &Eacute; &frac12; &amp;euro; &nosuchname; end.\n\n```\nfenced &euro; stays\n```\n');
+    const docx = path.join(dir, 'entities.docx');
+    const r = run([md, docx]);
+    const xml = r.status === 0 ? unzip(docx, 'word/document.xml') : '';
+    assert('entities docx: named entities decoded, "&amp;euro;" once, unknown name and fenced code as written',
+      xml.includes('>Signs € — → é É ½ &amp;euro; &amp;nosuchname; end.<') && xml.includes('>fenced &amp;euro; stays<'), r.stderr);
+    assert('entities docx: heading and its contents entry show the characters',
+      (xml.match(/>Price €10 — total</g) || []).length === 2 && !xml.includes('&amp;mdash;'), r.stderr);
+    const html = path.join(dir, 'entities.html');
+    const h = run([md, html]);
+    assert('entities html: contents entry shows "Price €10 — total"',
+      h.status === 0 && fs.readFileSync(html, 'utf8').includes('<span class="toc-title">Price €10 — total</span>'), h.stderr);
+  }
+
+  // Task lists in Word: ☑ / ☐ before the text, tight and loose, bullet or number kept
+  {
+    const md = write('tasks.md', '---\ntitle: Tasks\n---\n\n## T\n\n- [x] Done\n- [ ] Todo\n\nBetween.\n\n1. [x] Loose done\n\n2. [ ] Loose todo\n');
+    const docx = path.join(dir, 'tasks.docx');
+    const r = run([md, docx]);
+    const xml = r.status === 0 ? unzip(docx, 'word/document.xml') : '';
+    const para = text => xml.split('</w:p>').find(p => p.includes(`>${text}<`)) || '';
+    const marked = (text, box) => { const p = para(text); return p.includes('<w:numId ') && p.indexOf(`>${box} <`) !== -1 && p.indexOf(`>${box} <`) < p.indexOf(`>${text}<`); };
+    assert('task list docx: ☑ before Done, ☐ before Todo (tight and loose), numbering kept, no "[x]"',
+      marked('Done', '☑') && marked('Todo', '☐') && marked('Loose done', '☑') && marked('Loose todo', '☐') && !/\[[ x]\]/.test(xml), r.stderr);
+  }
+
+  // A nested ordered list keeps its start number: each ordered list has its own definition
+  // and uses one level of it, so every level starts there
+  {
+    const md = write('nested-start.md', '---\ntitle: Nested start\n---\n\n## L\n\n- Parent\n  3. Third\n  4. Fourth\n\n'
+      + '3. Top three\n4. Top four\n\nBetween.\n\n1. Top one\n');
+    const docx = path.join(dir, 'nested-start.docx');
+    const r = run([md, docx]);
+    const xml = r.status === 0 ? unzip(docx, 'word/document.xml') : '';
+    const numXml = r.status === 0 ? unzip(docx, 'word/numbering.xml') : '';
+    const nested = listNumbering(xml, numXml, 'Third');
+    const ilvl = ((xml.split('</w:p>').find(p => p.includes('>Third<')) || '').match(/<w:ilvl w:val="(\d)"\/>/) || [])[1];
+    const abs = (numXml.match(new RegExp(`<w:abstractNum [^>]*w:abstractNumId="${nested.abstractNumId}"[\\s\\S]*?</w:abstractNum>`)) || [''])[0];
+    const lvlStart = (abs.match(new RegExp(`<w:lvl w:ilvl="${ilvl}"[^>]*>[\\s\\S]*?<w:start w:val="(\\d+)"\\/>`)) || [])[1];
+    const num = (numXml.match(new RegExp(`<w:num w:numId="${nested.numId}">[\\s\\S]*?</w:num>`)) || [''])[0];
+    const override = (num.match(new RegExp(`<w:lvlOverride w:ilvl="${ilvl}"><w:startOverride w:val="(\\d+)"\\/>`)) || [])[1];
+    assert('nested ordered list docx: the level it uses starts at 3',
+      ilvl === '1' && lvlStart === '3' && override === '3', JSON.stringify({ ilvl, lvlStart, override }));
+    const [three, one] = ['Top three', 'Top one'].map(t => listNumbering(xml, numXml, t));
+    assert('nested ordered list docx: top-level lists still start at 3 and 1',
+      three.start === '3' && three.startOverride === '3' && one.start === '1' && one.startOverride === '1', JSON.stringify({ three, one }));
+  }
+
+  // A negative <img> size counts as not given (no negative extent)
+  {
+    const md = write('neg-img.md', '---\ntitle: Neg\n---\n\n## I\n\n<img src="pic.png" width="-20" height="40">\n');
+    const docx = path.join(dir, 'neg-img.docx');
+    const r = run([md, docx]);
+    const xml = r.status === 0 ? unzip(docx, 'word/document.xml') : '';
+    assert('image docx: negative width ignored, height 40 sets a proportional width',
+      xml.includes('<wp:extent') && !/<wp:extent[^>]*(cx|cy)="-/.test(xml)
+      && xml.includes(`<wp:extent cx="${Math.round(40 * 232 / 48) * 9525}" cy="${40 * 9525}"/>`), r.stderr);
+  }
+
+  // HTML embeds only real image bytes: a text file named leak.png stays a reference
+  {
+    fs.writeFileSync(path.join(dir, 'leak.png'), 'HTML_LEAK_MARKER_8812 not an image\n');
+    // a WebP header (RIFF....WEBP) is what the check looks for
+    fs.writeFileSync(path.join(dir, 'tiny.webp'), Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]));
+    fs.writeFileSync(path.join(dir, 'shape.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10"/></svg>');
+    const md = write('leak.md', '---\ntitle: Leak\n---\n\n## I\n\n![a](leak.png)\n\n<img src="leak.png" alt="raw">\n\n![b](pic.png)\n\n![c](tiny.webp)\n\n![d](shape.svg)\n');
+    const out = path.join(dir, 'leak.html');
+    const r = run([md, out]);
+    const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    assert('image html: a text file named .png is not embedded, with one warning for the file',
+      r.status === 0 && !html.includes(fs.readFileSync(path.join(dir, 'leak.png')).toString('base64')) && !html.includes('HTML_LEAK_MARKER')
+      && html.includes('src="leak.png"') && (r.stderr.match(/not a PNG, JPEG, GIF, WebP or SVG image \(not embedded\): leak\.png/g) || []).length === 1, r.stderr);
+    assert('image html: PNG, WebP-header and SVG files still embedded',
+      html.includes(`data:image/png;base64,${png.toString('base64')}`) && html.includes('data:image/webp;base64,') && html.includes('data:image/svg+xml;base64,'));
+  }
+
+  // A folder named like an image is left as a reference, not read (was EISDIR)
+  {
+    fs.mkdirSync(path.join(dir, 'folder.png'), { recursive: true });
+    const md = write('folder-img.md', '---\ntitle: Folder\n---\n\n## I\n\n![f](folder.png)\n\n<img src="folder.png" alt="raw">\n');
+    const out = path.join(dir, 'folder-img.html');
+    const r = run([md, out]);
+    assert('image html: a folder named x.png stays a reference, no crash',
+      r.status === 0 && fs.readFileSync(out, 'utf8').includes('src="folder.png"'), r.stderr);
+  }
+
+  // PDF loads nothing from the network: web images are blocked with a warning, local ones still load
+  {
+    const md = write('web-img.md', '---\ntitle: Web\n---\n\n## I\n\n![w](http://127.0.0.1:9/web-img-8813.png)\n\n<img src="https://example.invalid/raw-8813.png" alt="raw">\n\n![b](pic.png)\n');
+    const out = path.join(dir, 'web-img.pdf');
+    const r = run([md, out]);
+    assert('pdf: web images not loaded, one warning each; the conversion still succeeds',
+      r.status === 0 && fs.existsSync(out)
+      && (r.stderr.match(/\[pdf\] not loading a web address .*web-img-8813\.png/g) || []).length === 1
+      && (r.stderr.match(/\[pdf\] not loading a web address .*raw-8813\.png/g) || []).length === 1
+      && !/not loading a web address .*pic\.png/.test(r.stderr), r.stderr);
+  }
+
+  // Raw <img> with an unquoted or spaced src is embedded (HTML) and found (merged PDF);
+  // data-src is not the src
+  {
+    const md = write('raw-src.md', '---\ntitle: Raw src\n---\n\n## I\n\n<img src=pic.png alt="bare">\n\n<img src = "pic.png" alt="spaced">\n\n<img data-src="elsewhere.png" src=pic.png alt="data">\n');
+    const out = path.join(dir, 'raw-src.html');
+    const r = run([md, out]);
+    const html = r.status === 0 ? fs.readFileSync(out, 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '') : '';
+    const srcs = ['bare', 'spaced', 'data'].map(alt => ((html.match(new RegExp(`<img[^>]*alt="${alt}"[^>]*>`)) || [''])[0].match(/\ssrc="([^"]{0,22})/) || [])[1]);
+    assert('raw img html: unquoted and spaced src embedded as data: URIs, data-src left alone',
+      srcs.every(s => s && s.startsWith('data:image/png')) && html.includes('data-src="elsewhere.png"'), `${srcs.join(' ')} ${r.stderr}`);
+    const mergeDir = path.join(dir, 'raw-src-merge');
+    fs.mkdirSync(mergeDir);
+    fs.writeFileSync(path.join(mergeDir, 'a.md'), '---\ntitle: Raw A\n---\n\n## I\n\n<img src = ../pic.png>\n');
+    const pdf = path.join(dir, 'raw-src-merge.pdf');
+    const p = run([mergeDir, pdf]);
+    assert('raw img pdf merge: spaced, unquoted src found', p.status === 0 && /\/Width 232\b/.test(fs.readFileSync(pdf).toString('latin1')), p.stderr);
+  }
+
+  // <img height> alone sets the height in PDF/HTML: the CSS keeps height: auto off it
+  {
+    const rule = 'img:where(:not([height]), [width]) { height: auto; }';
+    const html = fs.readFileSync(path.join(OUT_DIR, 'brand-2026.html'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'templates', 'styles.css'), 'utf8');
+    assert('img css: height-only <img> keeps its height (HTML and PDF stylesheets)',
+      html.includes(rule) && !/img \{[^}]*height: auto/.test(html)
+      && css.includes('img:where(:not([height]), [width]) {\n  height: auto;\n}') && !/(^|\n)img \{[^}]*height: auto/.test(css));
+  }
+
+  // Merged HTML: a "## Cover" heading does not collide with the document cover; one id="TOC"
+  {
+    const mergeDir = path.join(dir, 'cover-merge');
+    fs.mkdirSync(mergeDir);
+    fs.writeFileSync(path.join(mergeDir, 'a.md'), '---\ntitle: Cover A\n---\n\n## Cover\n\nText.\n');
+    fs.writeFileSync(path.join(mergeDir, 'b.md'), '---\ntitle: Cover B\n---\n\n## Other\n\nText.\n');
+    const out = path.join(dir, 'cover-merge.html');
+    const r = run([mergeDir, out]);
+    const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    const ids = [...html.matchAll(/\sid="([^"]*)"/g)].map(m => m[1]);
+    const dup = ids.filter((id, i) => ids.indexOf(id) !== i);
+    const links = [...html.matchAll(/class="master-cover-table"[\s\S]*?<\/table>/g)].flatMap(m => [...m[0].matchAll(/href="#([^"]*)"/g)].map(l => l[1]));
+    assert('html merge: every id unique with a "## Cover" heading; master cover links reach the covers',
+      ids.includes('doc-0-cover') && !dup.length && links.length === 2 && links.every(l => ids.includes(l)) && links[0] === 'doc-0',
+      `dup: ${dup.join(' ')} links: ${links.join(' ')}`);
+    assert('html merge: exactly one id="TOC", the per-document contents are class="doc-toc"',
+      (html.match(/id="TOC"/g) || []).length === 1 && (html.match(/<nav class="doc-toc">/g) || []).length === 2
+      && html.includes(':is(#TOC, .doc-toc) > ul > li > a {'));
+  }
+
+  // Raw <a>: data-href is not the href (--no-external-links); merges prefix raw "#anchor" hrefs
+  {
+    const md = write('data-href.md', '---\ntitle: Data href\n---\n\n## One\n\nGo <a data-href="#one" href="https://example.invalid/">away</a> now.\n');
+    const out = path.join(dir, 'data-href.html');
+    const r = run([md, out, '--no-external-links']);
+    const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    assert('no-external-links: raw <a data-href="#…" href="https://…"> dropped, text kept',
+      r.status === 0 && !html.includes('example.invalid') && html.includes('Go away now.'), r.stderr);
+    const mergeDir = path.join(dir, 'raw-anchor-merge');
+    fs.mkdirSync(mergeDir);
+    fs.writeFileSync(path.join(mergeDir, 'a.md'), '---\ntitle: Raw anchors\n---\n\n## One\n\n'
+      + 'Inline <a href="#one">quoted</a>, <a href=#one>bare</a> and <a href="#">top</a>.\n\n<div><a href=\'#one\'>block</a></div>\n');
+    const merged = path.join(dir, 'raw-anchor-merge.html');
+    const m = run([mergeDir, merged]);
+    const mh = m.status === 0 ? fs.readFileSync(merged, 'utf8') : '';
+    assert('html merge: raw <a href="#one"> gets the document prefix (quoted, unquoted, block), "#" alone stays',
+      mh.includes('<a href="#doc-0-one">quoted</a>') && mh.includes('<a href=#doc-0-one>bare</a>')
+      && mh.includes('<a href=\'#doc-0-one\'>block</a>') && mh.includes('<a href="#">top</a>') && mh.includes('id="doc-0-one"'), m.stderr);
+  }
+
+  // The PDF's temporary page lives in its own fresh folder (not a predictable name in
+  // TMPDIR itself), removed afterwards. A preloaded spy logs the .html files written.
+  {
+    const tmp = path.join(dir, 'tmpdir');
+    fs.mkdirSync(tmp);
+    const spyLog = path.join(dir, 'tmp-spy.log');
+    const spy = write('tmp-spy.js', 'const fs = require("fs");\nconst write = fs.writeFileSync;\n'
+      + 'fs.writeFileSync = function (file, ...rest) {\n'
+      + '  if (typeof file === "string" && file.endsWith(".html")) fs.appendFileSync(process.env.TMP_SPY_LOG, file + "\\n");\n'
+      + '  return write.call(this, file, ...rest);\n};\n');
+    const md = write('tmp.md', '---\ntitle: Tmp\n---\n\n## One\n\nText.\n');
+    const r = run([md, path.join(dir, 'tmp.pdf')], { env: { ...process.env, TMPDIR: tmp, TMP_SPY_LOG: spyLog, NODE_OPTIONS: `--require ${spy}` } });
+    const written = fs.existsSync(spyLog) ? fs.readFileSync(spyLog, 'utf8').split('\n').filter(Boolean) : [];
+    const left = fs.readdirSync(tmp);
+    assert('pdf: the temporary page is written in a fresh cognizone-XXXXXX folder of TMPDIR',
+      r.status === 0 && written.length === 1 && path.dirname(path.dirname(written[0])) === tmp
+      && /^cognizone-[^/]{6}$/.test(path.basename(path.dirname(written[0]))), `${written.join(' ')} ${r.stderr}`);
+    assert('pdf: temporary files removed from TMPDIR after the conversion', r.status === 0 && !left.length, `${left.join(' ')} ${r.stderr}`);
+  }
+}
+
+// ── Word page-number step (cognizone-docx-toc), with a FAKE osascript ─────────
+// Never the real one: the fake must answer a probe first, or no Word test runs.
+{
+  const { spawnSync } = require('child_process');
+  const toc = path.join(__dirname, '..', 'bin', 'cognizone-docx-toc.js');
+  const sample = path.join(__dirname, '..', 'docs', 'samples', 'brand-2026.docx');
+  const wordDirs = ['/Applications', path.join(require('os').homedir(), 'Applications')];
+  const hasWord = wordDirs.some(d => fs.existsSync(path.join(d, 'Microsoft Word.app')));
+  const minimal = path.join(OUT_DIR, 'minimal.md');
+  if (process.platform !== 'darwin') {
+    // (written for Linux/Windows CI; cannot run on macOS)
+    const env = { ...process.env };
+    delete env.COGNIZONE_NO_WORD;
+    const r = spawnSync(process.execPath, [CONVERT, minimal, path.join(OUT_DIR, 'word-elsewhere.docx')], { encoding: 'utf8', env });
+    assert('word: off macOS a docx conversion exits 0 and ends with ACTION NEEDED', r.status === 0 && r.stderr.includes('ACTION NEEDED'), r.stderr);
+  } else if (!hasWord) {
+    assert('word: fake-osascript tests (skipped: Microsoft Word not installed)', true);
+  } else {
+    const fakeDir = path.join(OUT_DIR, 'fake-osascript');
+    fs.mkdirSync(fakeDir);
+    const log = path.join(fakeDir, 'calls.log');
+    const mode = path.join(fakeDir, 'mode');
+    // fail: exit 1; noop: leave the file alone; sample: copy the Word-saved sample over the target (last argument)
+    fs.writeFileSync(path.join(fakeDir, 'osascript'), [
+      '#!/bin/sh',
+      'cat > /dev/null',
+      'echo "$*" >> "$FAKE_OSASCRIPT_LOG"',
+      'echo FAKE_OSASCRIPT',
+      'case "$(cat "$FAKE_OSASCRIPT_MODE")" in',
+      '  fail) exit 1 ;;',
+      '  sample) for last; do :; done; cp "$FAKE_OSASCRIPT_SAMPLE" "$last" ;;',
+      'esac',
+      'exit 0',
+      '',
+    ].join('\n'), { mode: 0o755 });
+    const env = {
+      ...process.env,
+      PATH: `${fakeDir}${path.delimiter}${process.env.PATH}`,
+      FAKE_OSASCRIPT_LOG: log, FAKE_OSASCRIPT_MODE: mode, FAKE_OSASCRIPT_SAMPLE: sample,
+    };
+    delete env.COGNIZONE_NO_WORD;
+    const calls = () => (fs.existsSync(log) ? fs.readFileSync(log, 'utf8').split('\n').filter(Boolean).length : 0);
+    // SAFETY: the plain "osascript" this environment finds must be the fake ("return 1" is harmless if not)
+    fs.writeFileSync(mode, 'noop');
+    const probe = spawnSync('osascript', ['-e', 'return 1'], { env, input: '', encoding: 'utf8' });
+    const fake = probe.status === 0 && probe.stdout.includes('FAKE_OSASCRIPT') && calls() === 1;
+    assert('word: the fake osascript answers first on PATH (else no Word test runs)', fake, `${probe.status} ${probe.stdout} ${probe.error || ''}`);
+    if (fake) {
+      const convert = (name, m) => {
+        fs.writeFileSync(mode, m);
+        const before = calls();
+        const r = spawnSync(process.execPath, [CONVERT, minimal, path.join(fakeDir, name)], { encoding: 'utf8', env });
+        return { ...r, called: calls() === before + 1 };
+      };
+      let r = convert('fails.docx', 'fail');
+      assert('word: osascript fails → conversion exits 0 with ACTION NEEDED',
+        r.called && r.status === 0 && r.stderr.includes('ACTION NEEDED') && !r.stdout.includes('Contents page numbers filled in.'), r.stderr);
+      r = convert('untouched.docx', 'noop');
+      assert('word: Word leaves the placeholders → not verified, conversion exits 0 with ACTION NEEDED',
+        r.called && r.status === 0 && r.stderr.includes('still has no page numbers') && r.stderr.includes('ACTION NEEDED'), r.stderr);
+      r = convert('filled.docx', 'sample');
+      assert('word: page numbers filled in → "Contents page numbers filled in." and no ACTION NEEDED',
+        r.called && r.status === 0 && r.stdout.includes('Contents page numbers filled in.') && !r.stderr.includes('ACTION NEEDED'), r.stderr);
+      fs.writeFileSync(mode, 'noop');
+      const copy = path.join(fakeDir, 'sample-copy.docx');
+      fs.copyFileSync(sample, copy);
+      let h = spawnSync(process.execPath, [toc, copy], { encoding: 'utf8', env });
+      assert('word: cognizone-docx-toc verifies a Word-saved file: exit 0, "page numbers updated"',
+        h.status === 0 && h.stdout.includes('page numbers updated'), h.stderr);
+      h = spawnSync(process.execPath, [toc, path.join(OUT_DIR, 'minimal.docx')], { encoding: 'utf8', env });
+      assert('word: cognizone-docx-toc on a file with placeholders exits 1',
+        h.status === 1 && h.stderr.includes('still has no page numbers') && !h.stdout.includes('page numbers updated'), h.stderr);
+    }
   }
 }
 
