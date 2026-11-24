@@ -22,7 +22,7 @@ const NO_JS = { parse() { throw userError('only YAML frontmatter is supported');
 // "&amp;lt;" becomes "&lt;", not "<". Unknown names and code points that are not valid
 // XML characters (controls, surrogates) are left as written.
 // Names: the HTML 4 set (generated from Python's html.entities; lang/rang take the HTML5
-// values a browser shows), as "name:hex code point", plus apos, colon, tab and newline.
+// values a browser shows), as "name:hex code point", plus apos, colon, num, tab and newline.
 const ENTITIES = Object.fromEntries(`
   AElig:c6 Aacute:c1 Acirc:c2 Agrave:c0 Alpha:391 Aring:c5 Atilde:c3 Auml:c4 Beta:392 Ccedil:c7
   Chi:3a7 Dagger:2021 Delta:394 ETH:d0 Eacute:c9 Ecirc:ca Egrave:c8 Epsilon:395 Eta:397 Euml:cb
@@ -49,7 +49,7 @@ const ENTITIES = Object.fromEntries(`
   sup2:b2 sup3:b3 supe:2287 szlig:df tau:3c4 there4:2234 theta:3b8 thetasym:3d1 thinsp:2009 thorn:fe
   tilde:2dc times:d7 trade:2122 uArr:21d1 uacute:fa uarr:2191 ucirc:fb ugrave:f9 uml:a8 upsih:3d2
   upsilon:3c5 uuml:fc weierp:2118 xi:3be yacute:fd yen:a5 yuml:ff zeta:3b6 zwj:200d zwnj:200c
-  apos:27 colon:3a tab:9 newline:a`.trim().split(/\s+/).map(e => {
+  apos:27 colon:3a num:23 tab:9 newline:a`.trim().split(/\s+/).map(e => {
   const [name, hex] = e.split(':');
   return [name, String.fromCodePoint(parseInt(hex, 16))];
 }));
@@ -197,7 +197,7 @@ function imageInfo(buf) {
 // An SVG document: <svg> is the root element, after only an XML declaration, comments,
 // a doctype and whitespace (a text file that merely contains "<svg" somewhere is not one)
 // (each part matches one way only, so a malformed doctype is rejected in linear time)
-const isSvg = buf => /^(?:\s|<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(?:\[[^\]]*\][^>]*)?>)*<svg[\s>]/i
+const isSvg = buf => /^(?:\s|<\?xml(?:[^?]|\?(?!>))*\?>|<!--(?:[^-]|-(?!->))*-->|<!DOCTYPE[^>[]*(?:\[[^\]]*\][^>]*)?>)*<svg[\s>]/i
   .test(buf.toString('utf8').replace(/^﻿/, ''));
 
 // Raw HTML tags and their attributes. A quoted value is taken whole, so "src=" or ">"
