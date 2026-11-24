@@ -95,7 +95,7 @@ function stripRawLinks(tokens) {
       if (tag[1] === '/') return dropped.pop() ? '' : tag;
       // a real href attribute, not "data-href" or "href=" inside another attribute's value
       const href = attrValue(tag, 'href');
-      const drop = href !== undefined && !href.startsWith('#');
+      const drop = href !== undefined && !decodeEntities(href).startsWith('#');
       dropped.push(drop);
       return drop ? '' : tag;
     });
@@ -130,8 +130,11 @@ function absoluteLink(href, opts) {
 }
 
 // Folder merges: a raw <a href="#x"> (quoted or not) gets the prefix too; a bare "#" stays
-const prefixRawAnchors = (html, prefix) => html.replace(tagRe('a'),
-  tag => replaceAttr(tag, 'href', v => (/^#./.test(v) ? `#${prefix}${v.slice(1)}` : undefined)));
+// The value is read decoded, as the browser does (href="&#35;one" is "#one")
+const prefixRawAnchors = (html, prefix) => html.replace(tagRe('a'), tag => replaceAttr(tag, 'href', v => {
+  const href = decodeEntities(v);
+  return /^#./.test(href) ? `#${prefix}${href.slice(1).replace(/&/g, '&amp;')}` : undefined;
+}));
 
 function rewriteLinks(tokens, opts) {
   if (opts.stripExternal) stripRawLinks(tokens);

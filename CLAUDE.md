@@ -103,7 +103,7 @@ Note: Word references fonts by name (can't embed TTFs). Calistoga/Roboto/Roboto 
 ### HTML path (`render-html.js`)
 
 1. Same marked renderer approach as PDF (section-numbered headings, mermaid `<pre class="mermaid">` blocks)
-2. Assemble a single self-contained `.html` file — no Puppeteer; nothing is fetched from the web except images the Markdown gives as http(s) addresses, which stay references:
+2. Assemble a single self-contained `.html` file — no Puppeteer; nothing is fetched from the web except what the Markdown itself gives as an http(s) address (images, and raw HTML such as `<link rel="stylesheet">` or a CSS `@import`), which stays a reference:
    - Calistoga/Roboto/Roboto Mono fonts and icon embedded as base64 data URIs
    - Images (both `![alt](path)` and raw `<img>` tags) embedded as data URIs, resolved relative to the source file (%-encoded paths such as `pic%20one.png`, single-quoted, unquoted and spaced `src = …` work too; merged PDFs resolve raw `src` the same way). Only files whose bytes are a PNG, JPEG, GIF, WebP or SVG image are embedded (`imageInfo()` / `isSvg()` from `parse.js`, shared with the DOCX renderer, plus a WebP header check); anything else stays a reference, with one warning per file (a Markdown image is resolved twice: its renderer, then `embedRawImages()`). A folder named like an image (`x.png`), or a path the system cannot look up (name too long), stays a reference. `isSvg()` wants `<svg>` as the root element (after only an XML declaration, comments, a doctype and whitespace), whatever the extension
    - Mermaid UMD bundle inlined into a `<script>` (only when the document has mermaid blocks, also ones nested in blockquotes and list items) so diagrams render offline; the `<script>` tags carry the CSP nonce

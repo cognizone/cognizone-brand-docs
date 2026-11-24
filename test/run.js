@@ -1345,24 +1345,24 @@ try {
   // Raw <a>: data-href is not the href (--no-external-links); merges prefix raw "#anchor" hrefs
   {
     const md = write('data-href.md', '---\ntitle: Data href\n---\n\n## One\n\nGo <a data-href="#one" href="https://example.invalid/">away</a> now.\n\n'
-      + 'And <a title="see href=#one" href="https://example.invalid/2">off</a> too.\n');
+      + 'And <a title="see href=#one" href="https://example.invalid/2">off</a> too, <a href="&#35;one">encoded</a> stays.\n');
     const out = path.join(dir, 'data-href.html');
     const r = run([md, out, '--no-external-links']);
     const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
-    assert('no-external-links: raw <a data-href="#…" href="https://…"> and <a title="href=#…" href="https://…"> dropped, text kept',
-      r.status === 0 && !html.includes('example.invalid') && html.includes('Go away now.') && html.includes('And off too.'), r.stderr);
+    assert('no-external-links: raw <a data-href="#…" href="https://…"> and <a title="href=#…" href="https://…"> dropped, text kept; &#35;-encoded anchor kept',
+      r.status === 0 && !html.includes('example.invalid') && html.includes('Go away now.') && html.includes('And off too, <a href="&#35;one">encoded</a> stays.'), r.stderr);
     const mergeDir = path.join(dir, 'raw-anchor-merge');
     fs.mkdirSync(mergeDir);
     fs.writeFileSync(path.join(mergeDir, 'a.md'), '---\ntitle: Raw anchors\n---\n\n## One\n\n'
       + 'Inline <a href="#one">quoted</a>, <a href=#one>bare</a> and <a href="#">top</a>.\n\n<div><a href=\'#one\'>block</a></div>\n\n'
-      + 'And <a title="go href=#one" href="#one">titled</a>.\n');
+      + 'And <a title="go href=#one" href="#one">titled</a>, <a href="&#35;one">encoded</a>.\n');
     const merged = path.join(dir, 'raw-anchor-merge.html');
     const m = run([mergeDir, merged]);
     const mh = m.status === 0 ? fs.readFileSync(merged, 'utf8') : '';
-    assert('html merge: raw <a href="#one"> gets the document prefix (quoted, unquoted, block, "href=" in a title), "#" alone stays',
+    assert('html merge: raw <a href="#one"> gets the document prefix (quoted, unquoted, block, "href=" in a title, &#35;-encoded), "#" alone stays',
       mh.includes('<a href="#doc-0-one">quoted</a>') && mh.includes('<a href="#doc-0-one">bare</a>')
       && mh.includes('<a href="#doc-0-one">block</a>') && mh.includes('<a href="#">top</a>')
-      && mh.includes('<a title="go href=#one" href="#doc-0-one">titled</a>') && mh.includes('id="doc-0-one"'), m.stderr);
+      && mh.includes('<a title="go href=#one" href="#doc-0-one">titled</a>') && mh.includes('<a href="#doc-0-one">encoded</a>') && mh.includes('id="doc-0-one"'), m.stderr);
   }
 
   // The PDF's temporary page lives in its own fresh folder (not a predictable name in
