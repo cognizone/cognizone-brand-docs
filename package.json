@@ -8,7 +8,8 @@
     "cognizone-docx-toc": "./bin/cognizone-docx-toc.js"
   },
   "scripts": {
-    "test": "node test/run.js"
+    "test": "node test/run.js",
+    "samples": "node test/run.js && node bin/cognizone-convert.js test/output/brand-2026.md docs/samples/brand-2026.pdf && node bin/cognizone-convert.js test/output/brand-2026.md docs/samples/brand-2026.docx"
   },
   "files": [
     "bin/",

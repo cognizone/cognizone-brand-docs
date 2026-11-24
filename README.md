@@ -207,7 +207,7 @@ Unknown or invalid values are ignored with a warning on stderr; the diagram stil
 
 ## Output preview
 
-Sample outputs generated from the [test fixture](test/fixture.md): [PDF](test/output/brand-2026.pdf) | [Word](test/output/brand-2026.docx)
+Sample outputs generated from the [test fixture](test/fixture.md): [PDF](docs/samples/brand-2026.pdf) | [Word](docs/samples/brand-2026.docx)
 
 PDF output in the 2026 Cognizone brand:
 

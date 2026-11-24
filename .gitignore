@@ -4,11 +4,11 @@ node_modules/
 /*.docx
 /*.html
 .idea/
-test/output/*
+# Scratch folder of `npm test`: wiped and refilled on every run
+test/output/
 
-# Keep fixture outputs as sample references
-!test/output/brand-2026.pdf
-!test/output/brand-2026.docx
+# The README's sample outputs (regenerate with `npm run samples`)
+!docs/samples/brand-2026.pdf
 
 
 # Confidential reference documents (local only)

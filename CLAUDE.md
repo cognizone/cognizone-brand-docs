@@ -30,16 +30,23 @@ templates/
     static/               # Static Roboto/Roboto Mono instances for the PDF (variable fonts embed as Type 3)
 reference/                # Brand style spec + content-free reference .docx (private/ is git-ignored)
 assets/brand-2026/        # Logo pack as delivered (not in the npm package)
+docs/
+  samples/                # brand-2026.{pdf,docx}: the README's sample outputs (tracked; `npm run samples`)
+  screenshots/            # README screenshots, cropped from samples/brand-2026.pdf
 test/
   run.js                  # Test runner (`npm test`) — converts fixture.md in every format and asserts on the output
   fixture.md              # Test document exercising every element
-  output/                 # brand-2026.{pdf,docx}: README samples (tracked)
+  output/                 # Scratch folder of `npm test` (git-ignored, wiped on every run)
 package.json              # npm package config
 ```
 
 ## Testing
 
-`npm test` runs `test/run.js` (no framework). It regenerates the tracked samples in `test/output/` as a side effect — only commit those when the sample outputs should change (the README screenshots in `docs/screenshots/` are cropped from `test/output/brand-2026.pdf` with `pdftoppm -r 150`). Add a regression test there for every rendering bug fixed. The tests shell out to `unzip` and write to `/dev/null`, so they run on macOS/Linux (or WSL), not plain Windows. The PDF text and TOC page-number checks use `pdftotext` (poppler) when it is installed and are skipped without it. Besides the fixture, the tests cover the CLI wrapper (`bin/cognizone-convert.js --help` / `--version`), a PDF folder merge, the removed `--brand` option's compatibility shim, and that every `package.json` `bin` is executable and `bin/cognizone-docx-toc.js` prints usage without arguments and with `--help`.
+`npm test` runs `test/run.js` (no framework). It writes only to `test/output/`, a git-ignored scratch folder it wipes at the start of every run, so a test run leaves the working tree clean. Add a regression test there for every rendering bug fixed.
+
+The README's sample outputs are `docs/samples/brand-2026.{pdf,docx}` (tracked). `npm run samples` regenerates them: it runs the tests, then converts the test's fixture copy (`test/output/brand-2026.md`) with the real CLI, so on macOS with Word the Word sample gets its contents page numbers (Word may show "Grant File Access" for `docs/samples/` the first time). Run it only when the look of the output changes, and commit the result. The README screenshots in `docs/screenshots/` are cropped from `docs/samples/brand-2026.pdf` with `pdftoppm -r 150`.
+
+More on the tests: The tests shell out to `unzip` and write to `/dev/null`, so they run on macOS/Linux (or WSL), not plain Windows. The PDF text and TOC page-number checks use `pdftotext` (poppler) when it is installed and are skipped without it. Besides the fixture, the tests cover the CLI wrapper (`bin/cognizone-convert.js --help` / `--version`), a PDF folder merge, the removed `--brand` option's compatibility shim, and that every `package.json` `bin` is executable and `bin/cognizone-docx-toc.js` prints usage without arguments and with `--help`.
 
 ## Cross-platform
 

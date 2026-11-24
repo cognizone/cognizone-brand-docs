@@ -446,8 +446,8 @@ try {
 
 // ── 2026 brand ───────────────────────────────────────────────────────────────
 const brand2026Md = path.join(OUT_DIR, 'brand-2026.md');
-// Also the README sample outputs (test/output/brand-2026.{pdf,docx}); image paths
-// are rewritten because the copy lives one folder below the fixture
+// `npm run samples` renders this copy into docs/samples/ (the README samples); image
+// paths are rewritten because the copy lives one folder below the fixture
 fs.writeFileSync(brand2026Md, fs.readFileSync(FIXTURE, 'utf8')
   .replace(/^---\n/, '---\nsubtitle: "Second title line"\nsummary: "Cover summary paragraph."\nclassification: Confidential\n')
   .replace(/sample-image\.png/g, '../sample-image.png'));
