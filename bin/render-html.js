@@ -9,7 +9,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { marked } = require('marked');
 const { parseMermaidOpts } = require('./mermaid-opts');
-const { imageInfo, isSvg } = require('./parse');
+const { imageInfo, isSvg, tagRe, replaceAttr } = require('./parse');
 
 const TEMPLATES_DIR = path.join(__dirname, '..', 'templates');
 const ICON_PATH = path.join(TEMPLATES_DIR, 'icon.png');
@@ -39,7 +39,7 @@ const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp']);
 const isWebp = buf => buf.length >= 12 && buf.toString('latin1', 0, 4) === 'RIFF' && buf.toString('latin1', 8, 12) === 'WEBP';
 function isImageFile(file) {
   const buf = fs.readFileSync(file);
-  return ['png', 'jpg', 'gif'].includes(imageInfo(buf)?.type) || isWebp(buf) || isSvg(file, buf);
+  return ['png', 'jpg', 'gif'].includes(imageInfo(buf)?.type) || isWebp(buf) || isSvg(buf);
 }
 
 function mimeType(filePath) {
@@ -95,9 +95,10 @@ function resolveImageSrc(src, inputDir) {
   if (/^(https?:|data:|file:)/i.test(src)) return src;
   let decoded = src;
   try { decoded = decodeURIComponent(src); } catch { /* not URL-encoded */ }
-  // A file only: a folder named like an image (x.png) is left alone
-  const absPath = [decoded, src].map(p => path.resolve(inputDir, p))
-    .find(p => fs.statSync(p, { throwIfNoEntry: false })?.isFile());
+  // A file only: a folder named like an image (x.png) is left alone, and so is a path
+  // the system cannot even look up (a name too long, say)
+  const isFile = p => { try { return fs.statSync(p).isFile(); } catch { return false; } };
+  const absPath = [decoded, src].map(p => path.resolve(inputDir, p)).find(isFile);
   if (!absPath) return src;
   // Only embed recognised image types. Anything else (e.g. a .txt or a key
   // file) is left as-is so we never inline arbitrary file bytes.
@@ -117,15 +118,10 @@ function resolveImageSrc(src, inputDir) {
 // their relative src paths as data URIs too. The src may be double-quoted, single-quoted
 // or unquoted, with spaces around "=" (as imgTags() in render-docx.js); "data-src" is not it.
 function embedRawImages(html, inputDir) {
-  return html.replace(
-    /(<img\b[^>]*?\s)src\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi,
-    (m, pre, dq, sq, bare) => {
-      const src = dq ?? sq ?? bare;
-      if (!src || /^(data:|https?:|file:)/i.test(src)) return m;
-      const q = sq !== undefined ? "'" : '"';
-      return `${pre}src=${q}${resolveImageSrc(src, inputDir)}${q}`;
-    },
-  );
+  return html.replace(tagRe('img'), tag => replaceAttr(tag, 'src', src => {
+    const uri = src && resolveImageSrc(src, inputDir);
+    return uri === src ? undefined : uri;
+  }));
 }
 
 // ── HTML assembly helpers ─────────────────────────────────────────────────────

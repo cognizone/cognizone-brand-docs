@@ -7,7 +7,7 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 const { parseMermaidOpts } = require('./mermaid-opts');
-const { decodeEntities, imageInfo, isSvg } = require('./parse');
+const { decodeEntities, imageInfo, isSvg, tagRe, attrValue } = require('./parse');
 
 const {
   Document, Packer, Paragraph, TextRun, ExternalHyperlink, InternalHyperlink, ImageRun,
@@ -203,7 +203,7 @@ function loadImage(src) {
       const data = fs.readFileSync(file);
       const info = imageInfo(data);
       if (info && info.width > 0 && info.height > 0) img = { ...info, data };
-      else if (isSvg(file, data)) img = { svg: data };
+      else if (isSvg(data)) img = { svg: data };
       else console.warn(`Warning: ${src} is not a PNG, JPEG, GIF, BMP or SVG image; left out of the Word document`);
     }
     _images.set(src, img);
@@ -236,12 +236,12 @@ async function prepareSvgImages(browser, srcs) {
 // Each <img> tag in raw HTML: src, alt and any pixel width/height attributes
 function imgTags(html) {
   const attr = (tag, name) => {
-    const m = tag.match(new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'));
-    return m ? decodeEntities(m[1] ?? m[2] ?? m[3]) : undefined;
+    const v = attrValue(tag, name);
+    return v === undefined ? undefined : decodeEntities(v);
   };
   // only a positive size counts; zero, negative or no number is "not given"
   const px = value => { const n = parseInt(value, 10); return n > 0 ? n : undefined; };
-  return (html.match(/<img\b[^>]*>/gi) || []).map(tag => ({
+  return (html.match(tagRe('img')) || []).map(tag => ({
     src: attr(tag, 'src'),
     alt: attr(tag, 'alt'),
     width: px(attr(tag, 'width')),

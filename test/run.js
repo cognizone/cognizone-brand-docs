@@ -89,8 +89,17 @@ assert('escapeHtml: ampersand escaped first',
   escapeHtml('a & <b>') === 'a &amp; &lt;b&gt;');
 
 // ── Test parse.js ────────────────────────────────────────────────────────────
-const { parseMarkdown } = require('../bin/parse');
+const { parseMarkdown, isSvg, attrValue, replaceAttr } = require('../bin/parse');
 const parsed = parseMarkdown(FIXTURE);
+
+assert('isSvg: a text file that merely contains <svg> is not an SVG',
+  !isSvg(Buffer.from('PASSWORD=TOP_SECRET\n<div><svg xmlns="http://www.w3.org/2000/svg"></svg></div>')));
+assert('isSvg: <svg> root after a BOM, XML declaration, comment and doctype is an SVG',
+  isSvg(Buffer.from('﻿<?xml version="1.0"?>\n<!-- made by hand -->\n<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "x.dtd">\n<svg xmlns="http://www.w3.org/2000/svg"></svg>')));
+assert('attributes: "src=" inside another attribute\'s value is not the src',
+  attrValue('<img alt="example src=a.png" src=\'b.png\'>', 'src') === 'b.png'
+  && attrValue('<img data-src="a.png">', 'src') === undefined
+  && replaceAttr('<a title="go href=#x" href=#x>', 'href', v => `#p-${v.slice(1)}`) === '<a title="go href=#x" href="#p-x">');
 
 assert('parse: title extracted', parsed.title === 'Test Document: All Formatting Features');
 assert('parse: id extracted', parsed.id === 'TEST-001');
@@ -221,7 +230,7 @@ try {
   // Only what the browser fetches counts (src/srcset, <link href>, CSS url() / @import),
   // not hyperlinks; the inline scripts (they carry a nonce) are not markup
   const loads = [
-    /\ssrcset?\s*=\s*["']?\s*(?:https?:)?\/\//i,
+    /\ssrc(?:set)?\s*=\s*["']?\s*(?:https?:)?\/\//i,
     /<link\b[^>]*?\shref\s*=\s*["']?\s*(?:https?:)?\/\//i,
     /url\(\s*["']?\s*(?:https?:)?\/\//i,
     /@import\s+(?:url\(\s*)?["']?\s*(?:https?:)?\/\//i,
@@ -1235,10 +1244,14 @@ try {
     // a WebP header (RIFF....WEBP) is what the check looks for
     fs.writeFileSync(path.join(dir, 'tiny.webp'), Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]));
     fs.writeFileSync(path.join(dir, 'shape.svg'), '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10"><rect width="20" height="10"/></svg>');
-    const md = write('leak.md', '---\ntitle: Leak\n---\n\n## I\n\n![a](leak.png)\n\n<img src="leak.png" alt="raw">\n\n![b](pic.png)\n\n![c](tiny.webp)\n\n![d](shape.svg)\n');
+    fs.writeFileSync(path.join(dir, 'fake.svg'), 'SVG_LEAK_MARKER_8814 secret\n<div><svg xmlns="http://www.w3.org/2000/svg"></svg></div>\n');
+    const md = write('leak.md', '---\ntitle: Leak\n---\n\n## I\n\n![a](leak.png)\n\n<img src="leak.png" alt="raw">\n\n![b](pic.png)\n\n![c](tiny.webp)\n\n![d](shape.svg)\n\n![e](fake.svg)\n');
     const out = path.join(dir, 'leak.html');
     const r = run([md, out]);
     const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
+    assert('image html: a text file named .svg that contains <svg> is not embedded',
+      r.status === 0 && html.includes('src="fake.svg"')
+      && !html.includes(fs.readFileSync(path.join(dir, 'fake.svg')).toString('base64')), r.stderr);
     assert('image html: a text file named .png is not embedded, with one warning for the file',
       r.status === 0 && !html.includes(fs.readFileSync(path.join(dir, 'leak.png')).toString('base64')) && !html.includes('HTML_LEAK_MARKER')
       && html.includes('src="leak.png"') && (r.stderr.match(/not a PNG, JPEG, GIF, WebP or SVG image \(not embedded\): leak\.png/g) || []).length === 1, r.stderr);
@@ -1249,10 +1262,10 @@ try {
   // A folder named like an image is left as a reference, not read (was EISDIR)
   {
     fs.mkdirSync(path.join(dir, 'folder.png'), { recursive: true });
-    const md = write('folder-img.md', '---\ntitle: Folder\n---\n\n## I\n\n![f](folder.png)\n\n<img src="folder.png" alt="raw">\n');
+    const md = write('folder-img.md', `---\ntitle: Folder\n---\n\n## I\n\n![f](folder.png)\n\n<img src="folder.png" alt="raw">\n\n![long](${'x'.repeat(300)}.png)\n`);
     const out = path.join(dir, 'folder-img.html');
     const r = run([md, out]);
-    assert('image html: a folder named x.png stays a reference, no crash',
+    assert('image html: a folder named x.png, or a name too long to look up, stays a reference, no crash',
       r.status === 0 && fs.readFileSync(out, 'utf8').includes('src="folder.png"'), r.stderr);
   }
 
@@ -1271,19 +1284,32 @@ try {
   // Raw <img> with an unquoted or spaced src is embedded (HTML) and found (merged PDF);
   // data-src is not the src
   {
-    const md = write('raw-src.md', '---\ntitle: Raw src\n---\n\n## I\n\n<img src=pic.png alt="bare">\n\n<img src = "pic.png" alt="spaced">\n\n<img data-src="elsewhere.png" src=pic.png alt="data">\n');
+    const md = write('raw-src.md', '---\ntitle: Raw src\n---\n\n## I\n\n<img src=pic.png alt="bare">\n\n<img src = "pic.png" alt="spaced">\n\n<img data-src="elsewhere.png" src=pic.png alt="data">\n\n<img title="see src=nothing.png" src="pic.png" alt="inner">\n');
     const out = path.join(dir, 'raw-src.html');
     const r = run([md, out]);
     const html = r.status === 0 ? fs.readFileSync(out, 'utf8').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '') : '';
-    const srcs = ['bare', 'spaced', 'data'].map(alt => ((html.match(new RegExp(`<img[^>]*alt="${alt}"[^>]*>`)) || [''])[0].match(/\ssrc="([^"]{0,22})/) || [])[1]);
-    assert('raw img html: unquoted and spaced src embedded as data: URIs, data-src left alone',
-      srcs.every(s => s && s.startsWith('data:image/png')) && html.includes('data-src="elsewhere.png"'), `${srcs.join(' ')} ${r.stderr}`);
+    const srcs = ['bare', 'spaced', 'data', 'inner'].map(alt => ((html.match(new RegExp(`<img[^>]*alt="${alt}"[^>]*>`)) || [''])[0].match(/\ssrc="([^"]{0,22})/) || [])[1]);
+    assert('raw img html: unquoted, spaced and "src=" in another attribute: real src embedded as data: URIs, data-src left alone',
+      srcs.every(s => s && s.startsWith('data:image/png')) && html.includes('data-src="elsewhere.png"')
+      && html.includes('title="see src=nothing.png"'), `${srcs.join(' ')} ${r.stderr}`);
+    const docx = path.join(dir, 'raw-src.docx');
+    const d = run([md, docx]);
+    assert('raw img docx: "src=" inside another attribute is not the src (all four images embedded)',
+      d.status === 0 && unzip(docx, 'word/document.xml').split(`<wp:extent cx="${232 * 9525}" cy="${48 * 9525}"/>`).length - 1 === 4
+      && !d.stderr.includes('nothing.png'), d.stderr);
     const mergeDir = path.join(dir, 'raw-src-merge');
     fs.mkdirSync(mergeDir);
     fs.writeFileSync(path.join(mergeDir, 'a.md'), '---\ntitle: Raw A\n---\n\n## I\n\n<img src = ../pic.png>\n');
     const pdf = path.join(dir, 'raw-src-merge.pdf');
     const p = run([mergeDir, pdf]);
     assert('raw img pdf merge: spaced, unquoted src found', p.status === 0 && /\/Width 232\b/.test(fs.readFileSync(pdf).toString('latin1')), p.stderr);
+    const innerDir = path.join(dir, 'raw-src-merge-inner');
+    fs.mkdirSync(innerDir);
+    fs.writeFileSync(path.join(innerDir, 'a.md'), '---\ntitle: Raw B\n---\n\n## I\n\n<img alt="example src=../pic.png" src="../pic.png">\n');
+    const pdf2 = path.join(dir, 'raw-src-merge-inner.pdf');
+    const p2 = run([innerDir, pdf2]);
+    assert('raw img pdf merge: "src=" inside alt is not the src; the real one is found',
+      p2.status === 0 && /\/Width 232\b/.test(fs.readFileSync(pdf2).toString('latin1')), p2.stderr);
   }
 
   // <img height> alone sets the height in PDF/HTML: the CSS keeps height: auto off it
@@ -1318,22 +1344,25 @@ try {
 
   // Raw <a>: data-href is not the href (--no-external-links); merges prefix raw "#anchor" hrefs
   {
-    const md = write('data-href.md', '---\ntitle: Data href\n---\n\n## One\n\nGo <a data-href="#one" href="https://example.invalid/">away</a> now.\n');
+    const md = write('data-href.md', '---\ntitle: Data href\n---\n\n## One\n\nGo <a data-href="#one" href="https://example.invalid/">away</a> now.\n\n'
+      + 'And <a title="see href=#one" href="https://example.invalid/2">off</a> too.\n');
     const out = path.join(dir, 'data-href.html');
     const r = run([md, out, '--no-external-links']);
     const html = r.status === 0 ? fs.readFileSync(out, 'utf8') : '';
-    assert('no-external-links: raw <a data-href="#…" href="https://…"> dropped, text kept',
-      r.status === 0 && !html.includes('example.invalid') && html.includes('Go away now.'), r.stderr);
+    assert('no-external-links: raw <a data-href="#…" href="https://…"> and <a title="href=#…" href="https://…"> dropped, text kept',
+      r.status === 0 && !html.includes('example.invalid') && html.includes('Go away now.') && html.includes('And off too.'), r.stderr);
     const mergeDir = path.join(dir, 'raw-anchor-merge');
     fs.mkdirSync(mergeDir);
     fs.writeFileSync(path.join(mergeDir, 'a.md'), '---\ntitle: Raw anchors\n---\n\n## One\n\n'
-      + 'Inline <a href="#one">quoted</a>, <a href=#one>bare</a> and <a href="#">top</a>.\n\n<div><a href=\'#one\'>block</a></div>\n');
+      + 'Inline <a href="#one">quoted</a>, <a href=#one>bare</a> and <a href="#">top</a>.\n\n<div><a href=\'#one\'>block</a></div>\n\n'
+      + 'And <a title="go href=#one" href="#one">titled</a>.\n');
     const merged = path.join(dir, 'raw-anchor-merge.html');
     const m = run([mergeDir, merged]);
     const mh = m.status === 0 ? fs.readFileSync(merged, 'utf8') : '';
-    assert('html merge: raw <a href="#one"> gets the document prefix (quoted, unquoted, block), "#" alone stays',
-      mh.includes('<a href="#doc-0-one">quoted</a>') && mh.includes('<a href=#doc-0-one>bare</a>')
-      && mh.includes('<a href=\'#doc-0-one\'>block</a>') && mh.includes('<a href="#">top</a>') && mh.includes('id="doc-0-one"'), m.stderr);
+    assert('html merge: raw <a href="#one"> gets the document prefix (quoted, unquoted, block, "href=" in a title), "#" alone stays',
+      mh.includes('<a href="#doc-0-one">quoted</a>') && mh.includes('<a href="#doc-0-one">bare</a>')
+      && mh.includes('<a href="#doc-0-one">block</a>') && mh.includes('<a href="#">top</a>')
+      && mh.includes('<a title="go href=#one" href="#doc-0-one">titled</a>') && mh.includes('id="doc-0-one"'), m.stderr);
   }
 
   // The PDF's temporary page lives in its own fresh folder (not a predictable name in

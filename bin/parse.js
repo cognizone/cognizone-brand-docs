@@ -91,11 +91,11 @@ function stripRawLinks(tokens) {
   const dropped = [];  // one entry per open <a>: true when its tags are removed
   for (const t of tokens) {
     if (t.type !== 'html') continue;
-    t.text = t.raw = t.text.replace(/<a\b[^>]*>|<\/a\s*>/gi, tag => {
+    t.text = t.raw = t.text.replace(new RegExp(`${tagRe('a').source}|<\\/a\\s*>`, 'gi'), tag => {
       if (tag[1] === '/') return dropped.pop() ? '' : tag;
-      // a real href attribute, not the end of "data-href"
-      const href = tag.match(/\shref\s*=\s*["']?([^"'\s>]*)/i);
-      const drop = !!href && !href[1].startsWith('#');
+      // a real href attribute, not "data-href" or "href=" inside another attribute's value
+      const href = attrValue(tag, 'href');
+      const drop = href !== undefined && !href.startsWith('#');
       dropped.push(drop);
       return drop ? '' : tag;
     });
@@ -130,8 +130,8 @@ function absoluteLink(href, opts) {
 }
 
 // Folder merges: a raw <a href="#x"> (quoted or not) gets the prefix too; a bare "#" stays
-const prefixRawAnchors = (html, prefix) =>
-  html.replace(/(<a\b[^>]*?\shref\s*=\s*["']?#)(?=[^"'\s>])/gi, m => m + prefix);
+const prefixRawAnchors = (html, prefix) => html.replace(tagRe('a'),
+  tag => replaceAttr(tag, 'href', v => (/^#./.test(v) ? `#${prefix}${v.slice(1)}` : undefined)));
 
 function rewriteLinks(tokens, opts) {
   if (opts.stripExternal) stripRawLinks(tokens);
@@ -187,10 +187,26 @@ function imageInfo(buf) {
   return null;
 }
 
-const isSvg = (file, buf) => {
-  const text = buf.toString('utf8').replace(/^﻿/, '').trimStart();
-  return (path.extname(file).toLowerCase() === '.svg' || /^<(\?xml|svg)/i.test(text)) && /<svg[\s>]/i.test(text);
-};
+// An SVG document: <svg> is the root element, after only an XML declaration, comments,
+// a doctype and whitespace (a text file that merely contains "<svg" somewhere is not one)
+const isSvg = buf => /^(?:\s|<\?xml[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>[]*(?:\[[^\]]*\])?[^>]*>)*<svg[\s>]/i
+  .test(buf.toString('utf8').replace(/^﻿/, ''));
+
+// Raw HTML tags and their attributes. A quoted value is taken whole, so "src=" or ">"
+// inside another attribute's value (alt="a src=b") is never mistaken for markup.
+const tagRe = name => new RegExp(`<${name}\\b(?:[^>"']|"[^"]*"|'[^']*')*>`, 'gi');
+const ATTR = /(\s+)([^\s"'>/=]+)(?:(\s*=\s*)(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+// Value of attribute `name` ('' when it has none), or undefined when the tag lacks it
+function attrValue(tag, name) {
+  for (const m of tag.matchAll(ATTR)) if (m[2].toLowerCase() === name) return m[4] ?? m[5] ?? m[6] ?? '';
+}
+// Replace the value of attribute `name` with fn(value), double-quoted; fn returning
+// undefined leaves the attribute as written
+const replaceAttr = (tag, name, fn) => tag.replace(ATTR, (m, sp, n, eq, dq, sq, bare) => {
+  const v = n.toLowerCase() === name ? dq ?? sq ?? bare : undefined;
+  const nv = v === undefined ? undefined : fn(v);
+  return nv === undefined ? m : `${sp}${n}="${nv.replace(/"/g, '&quot;')}"`;
+});
 
 function parseMarkdown(inputFile, opts = {}) {
   let parsedMatter;
@@ -279,4 +295,4 @@ function parseMarkdown(inputFile, opts = {}) {
   };
 }
 
-module.exports = { parseMarkdown, slugify, decodeEntities, imageInfo, isSvg };
+module.exports = { parseMarkdown, slugify, decodeEntities, imageInfo, isSvg, tagRe, attrValue, replaceAttr };

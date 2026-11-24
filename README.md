@@ -7,7 +7,7 @@ Works on macOS, Linux, and Windows — no bash or pandoc required. One step is m
 ## Features
 
 - **PDF, Word, and HTML output** from a single Markdown source
-- **Self-contained HTML** — a single `.html` file with fonts, images, logo, and mermaid embedded; opens offline in any browser
+- **Self-contained HTML** — a single `.html` file with fonts, local images, logo, and mermaid embedded; opens offline in any browser (an image given as a web address stays a link to the web)
 - **Folder merge** — pass a folder to combine all Markdown files (`.md`, `.markdown`) into a single PDF or HTML file with a master cover page and TOC
 - **Branded cover page** with document ID, title, and metadata table
 - **Auto-generated table of contents** with section numbers and page references (in Word files the page numbers need Word: automatic on macOS, a manual step elsewhere)

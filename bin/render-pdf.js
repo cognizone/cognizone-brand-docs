@@ -10,6 +10,7 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 const crypto = require('crypto');
 const { parseMermaidOpts } = require('./mermaid-opts');
+const { tagRe, replaceAttr } = require('./parse');
 
 function escapeHtml(s) {
   return String(s)
@@ -242,17 +243,12 @@ function renderPdf(parsed, outputFile) {
 // may be entity-escaped: decode both, so pathToFileURL encodes exactly once. The src may
 // be double-quoted, single-quoted or unquoted, with spaces around "="; "data-src" is not it.
 function resolveImagePaths(html, inputDir) {
-  return html.replace(
-    /(<img\b[^>]*?\s)src\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/gi,
-    (m, pre, dq, sq, bare) => {
-      const src = dq ?? sq ?? bare;
-      if (!src || /^(data:|https?:|file:)/i.test(src)) return m;
-      let file = src.replace(/&amp;/g, '&');
-      try { file = decodeURIComponent(file); } catch { /* not URL-encoded */ }
-      const abs = pathToFileURL(path.resolve(inputDir, file)).href;
-      return `${pre}src="${abs.replace(/&/g, '&amp;')}"`;
-    },
-  );
+  return html.replace(tagRe('img'), tag => replaceAttr(tag, 'src', src => {
+    if (!src || /^(data:|https?:|file:)/i.test(src)) return undefined;
+    let file = src.replace(/&amp;/g, '&');
+    try { file = decodeURIComponent(file); } catch { /* not URL-encoded */ }
+    return pathToFileURL(path.resolve(inputDir, file)).href.replace(/&/g, '&amp;');
+  }));
 }
 
 function renderMergedPdf(parsedDocs, folderPath, outputFile) {
