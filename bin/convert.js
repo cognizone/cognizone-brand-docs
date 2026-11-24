@@ -5,7 +5,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 const { parseMarkdown } = require('./parse');
 
 // ── Parse arguments ──────────────────────────────────────────────────────────
@@ -150,6 +150,25 @@ function ensureChrome() {
   execFileSync(process.execPath, [require.resolve('puppeteer/install.mjs')], { stdio: 'inherit' });
 }
 
+// A fresh Word file has no contents page numbers: only Word can paginate it. On macOS
+// with Word, cognizone-docx-toc has Word fill them in; in every other case the user is
+// told to do it. COGNIZONE_NO_WORD=1 skips Word (tests, unattended runs).
+function fillPageNumbers(outputFile) {
+  let why = 'filling them in automatically needs macOS with Microsoft Word';
+  if (process.env.COGNIZONE_NO_WORD) {
+    why = 'COGNIZONE_NO_WORD is set';
+  } else if (process.platform === 'darwin') {
+    console.log('Filling in the contents page numbers with Word... (if Word shows "Grant File Access", choose Select and grant access to the folder)');
+    const r = spawnSync(process.execPath, [path.join(__dirname, 'cognizone-docx-toc.js'), outputFile], { stdio: ['ignore', 'ignore', 'inherit'] });
+    if (r.status === 0) {
+      console.log('Contents page numbers filled in.');
+      return;
+    }
+    why = 'Word could not fill them in, see the message above';
+  }
+  console.warn(`ACTION NEEDED: the contents page of ${path.basename(outputFile)} has no page numbers yet (${why}). Open the file in Word and choose References > Update Table > "Update page numbers only".`);
+}
+
 // ── Parse + render ───────────────────────────────────────────────────────────
 async function main() {
   if (isDirectory && format === 'docx') {
@@ -195,6 +214,7 @@ async function main() {
     else require('./render-pdf').renderPdf(parsed, outputFile);
 
     console.log(`Written: ${outputFile}`);
+    if (format === 'docx') fillPageNumbers(outputFile);
   }
 }
 

@@ -4,7 +4,8 @@
   "description": "Cognizone branded document conversion (PDF, Word, HTML)",
   "type": "commonjs",
   "bin": {
-    "cognizone-convert": "./bin/cognizone-convert.js"
+    "cognizone-convert": "./bin/cognizone-convert.js",
+    "cognizone-docx-toc": "./bin/cognizone-docx-toc.js"
   },
   "scripts": {
     "test": "node test/run.js"

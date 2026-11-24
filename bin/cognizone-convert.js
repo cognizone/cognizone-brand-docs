@@ -52,6 +52,11 @@ Examples:
   cognizone-convert docs/                      # merge folder → PDF
   cognizone-convert docs/ -f html              # merge folder → HTML
   cognizone-convert docs/ merged-output.pdf
+
+Word output: on macOS with Microsoft Word, Word is opened once to fill in the
+contents page numbers (set COGNIZONE_NO_WORD=1 to skip). Otherwise the tool
+says so, and you fill them in in Word: References > Update Table > "Update
+page numbers only". cognizone-docx-toc <file.docx> does the same on its own.
 `);
   process.exit(0);
 }

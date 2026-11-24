@@ -2,7 +2,7 @@
 
 Cognizone branded document conversion. Converts Markdown files to PDF, Word (.docx), or HTML using Cognizone brand styles (colors, fonts, layout).
 
-Works on macOS, Linux, and Windows — no bash or pandoc required.
+Works on macOS, Linux, and Windows — no bash or pandoc required. One step is macOS-only: filling in the page numbers of a Word file's contents page (see [Page numbers in a Word file's contents page](#page-numbers-in-a-word-files-contents-page)).
 
 ## Features
 
@@ -10,7 +10,7 @@ Works on macOS, Linux, and Windows — no bash or pandoc required.
 - **Self-contained HTML** — a single `.html` file with fonts, images, logo, and mermaid embedded; opens offline in any browser
 - **Folder merge** — pass a folder to combine all Markdown files (`.md`, `.markdown`) into a single PDF or HTML file with a master cover page and TOC
 - **Branded cover page** with document ID, title, and metadata table
-- **Auto-generated table of contents** with section numbers and page references
+- **Auto-generated table of contents** with section numbers and page references (in Word files the page numbers need Word: automatic on macOS, a manual step elsewhere)
 - **Branded headers and footers** with logo, document title, client/project info, and page numbers
 - **Mermaid diagrams** — `\`\`\`mermaid` code blocks render as visual diagrams (flowcharts, sequence diagrams, etc.)
 - **Full Markdown support** — headings, tables, lists (nested/mixed), code blocks, blockquotes, images, links, inline formatting
@@ -24,7 +24,7 @@ Works on macOS, Linux, and Windows — no bash or pandoc required.
 - [Node.js](https://nodejs.org/) ≥ 18 with npm (check with `node -v` and `npm -v`)
 - Access to the `cognizone/cognizone-brand-docs` GitHub repository (the package installs from it)
 
-Works the same on macOS, Windows and Linux.
+Works the same on macOS, Windows and Linux, except that Word contents page numbers are filled in automatically only on macOS with Microsoft Word.
 
 ## Installation
 
@@ -53,7 +53,7 @@ Word documents reference fonts by name, so install [Calistoga](https://fonts.goo
 | `EACCES` / permission error on install (macOS/Linux) | Don't use `sudo`; install Node with a version manager ([Volta](https://volta.sh), [nvm](https://github.com/nvm-sh/nvm)) so global installs go to your home folder. |
 | 404 or authentication error on install | Check that your GitHub account has access to the Cognizone organisation. |
 | `Could not find Chrome` | Run `npx puppeteer browsers install chrome`. On a minimal Linux install Chrome may also need system libraries; see the [Puppeteer troubleshooting guide](https://pptr.dev/troubleshooting). |
-| Word contents page shows `–` or wrong page numbers | Choose **References → Update Table → Update page numbers only**. "Update entire table" replaces the 2026 styling with Word's default look. |
+| Word contents page shows `–` or wrong page numbers | The conversion printed `ACTION NEEDED`: Word could not fill them in. Choose **References → Update Table → Update page numbers only** in Word, or on macOS with Microsoft Word run `cognizone-docx-toc file.docx`. "Update entire table" replaces the 2026 styling with Word's default look. |
 
 ## Usage
 
@@ -78,11 +78,38 @@ A folder merge takes every `.md` and `.markdown` file (any case) in the folder a
 
 All output uses the 2026 Cognizone brand; no flag is needed.
 
-A Word file opens with `–` in place of the contents page numbers. To fill them in, choose **References → Update Table → Update page numbers only** in Word. Don't pick "Update entire table": it replaces the 2026 styling with Word's default look.
-
 Word output embeds PNG, JPEG, GIF and BMP images and converts SVG images to PNG. Any other file used as an image is left out with a warning and shows as `[alt text]`.
 
 Raw HTML in the Markdown can't run anything in HTML or PDF output: `<script>`, `on…=` handlers and `javascript:` links are inert, and `<iframe>` / `<object>` load nothing.
+
+### Page numbers in a Word file's contents page
+
+A new Word file has `–` where the contents page numbers go: only Word can work them out. **Check the last lines of every Word conversion.** It ends in one of two ways:
+
+| The conversion ends with | What it means | What you do |
+|---|---|---|
+| `Contents page numbers filled in.` | Word opened the file and filled in the numbers. | Nothing. |
+| `ACTION NEEDED: the contents page of … has no page numbers yet` | The numbers are still `–`. | Open the file in Word and choose **References → Update Table → Update page numbers only**. |
+
+Which one you get depends on the machine:
+
+| Where you run it | Result |
+|---|---|
+| macOS with Microsoft Word | Filled in automatically. |
+| macOS without Word, Windows, Linux | Always `ACTION NEEDED`: you do the step in Word yourself. |
+| `COGNIZONE_NO_WORD=1` set (scripts, unattended runs) | Always `ACTION NEEDED`; Word is not opened. |
+
+The conversion succeeds (exit code 0) in both cases, so a script cannot tell them apart: read the output.
+
+On macOS the automatic step can still end in `ACTION NEEDED`:
+
+- **"Grant File Access" dialog.** The first time Word is asked to open a file in a folder, it shows this dialog. Choose **Select…** and grant access to the folder; later files there go through without asking. If you cancel it, or don't answer within two minutes, the numbers are not filled in.
+- **The file is already open in Word.** Close it and convert again.
+- **Automation permission.** Your terminal app must be allowed to control Microsoft Word (System Settings → Privacy & Security → Automation).
+
+`cognizone-docx-toc file.docx` runs the automatic step on its own for a file made earlier (macOS with Word only).
+
+Don't pick "Update entire table" in Word: it replaces the 2026 styling with Word's default look.
 
 ### Using it from Claude Code
 
@@ -92,6 +119,9 @@ Claude Code picks the tool up from the shell like any other command. To make it 
 ## Cognizone branded documents
 Render client-facing Markdown deliverables with `cognizone-convert` (`-f pdf|docx|html`),
 never with plain pandoc. It uses the 2026 Cognizone brand.
+After a docx conversion, read the last lines of the output: if they say `ACTION NEEDED`,
+the contents page has no page numbers yet; tell the user to fill them in in Word
+(References → Update Table → "Update page numbers only").
 ```
 
 ## Document format

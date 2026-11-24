@@ -8,6 +8,8 @@ const path = require('path');
 
 const FIXTURE = path.join(__dirname, 'fixture.md');
 const CONVERT = path.join(__dirname, '..', 'bin', 'convert.js');
+// Never drive Microsoft Word from the tests: Word conversions then say the page numbers need filling in
+process.env.COGNIZONE_NO_WORD = '1';
 const OUT_DIR = path.join(__dirname, 'output');
 
 // Clean / create output dir
@@ -1089,6 +1091,34 @@ try {
     assert('review: wrapper --version prints the package version', version === require('../package.json').version, version);
   } catch (e) {
     assert('review: wrapper --help / --version exit 0', false, e.stderr?.toString() || e.message);
+  }
+
+  // Every package.json bin is executable; cognizone-docx-toc prints usage without arguments (exit 2) and with --help (exit 0)
+  {
+    const root = path.join(__dirname, '..');
+    for (const [name, target] of Object.entries(require('../package.json').bin)) {
+      let ok = true;
+      try { fs.accessSync(path.join(root, target), fs.constants.X_OK); } catch { ok = false; }
+      assert(`review: bin ${name} exists and is executable`, ok, target);
+    }
+    const { spawnSync } = require('child_process');
+    const toc = path.join(root, 'bin', 'cognizone-docx-toc.js');
+    const noArgs = spawnSync(process.execPath, [toc], { encoding: 'utf8' });
+    assert('review: cognizone-docx-toc without arguments exits 2 with usage on stderr',
+      noArgs.status === 2 && noArgs.stderr.includes('usage:'), `${noArgs.status} ${noArgs.stderr}`);
+    const help = spawnSync(process.execPath, [toc, '--help'], { encoding: 'utf8' });
+    assert('review: cognizone-docx-toc --help exits 0 with usage on stdout',
+      help.status === 0 && help.stdout.includes('usage:'), `${help.status} ${help.stdout}`);
+    // Word would open a non-.docx file as text and save over it: refused before Word is touched
+    const notDocx = spawnSync(process.execPath, [toc, path.join(OUT_DIR, 'minimal.md')], { encoding: 'utf8' });
+    assert('review: cognizone-docx-toc refuses a file that is not a .docx',
+      notDocx.status === 1 && notDocx.stderr.includes('not a .docx file'), `${notDocx.status} ${notDocx.stderr}`);
+    // When Word does not fill in the contents page numbers, the converter says the user must; Word output only
+    const hint = format => spawnSync(process.execPath, [CONVERT, path.join(OUT_DIR, 'minimal.md'), path.join(OUT_DIR, `hint.${format}`)], { encoding: 'utf8' });
+    const docx = hint('docx');
+    assert('review: docx conversion without Word still succeeds and tells the user to fill in the page numbers',
+      docx.status === 0 && docx.stderr.includes('ACTION NEEDED') && docx.stderr.includes('Update page numbers only'), docx.stderr);
+    assert('review: html conversion prints no page-number notice', !hint('html').stderr.includes('ACTION NEEDED'));
   }
 }
 
