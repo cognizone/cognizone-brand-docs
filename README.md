@@ -84,7 +84,7 @@ Task list items (`- [x] Done`, `- [ ] Todo`) show ☑ / ☐ in Word output and a
 
 Raw HTML in the Markdown can't run anything in HTML or PDF output: `<script>`, `on…=` handlers and `javascript:` links are inert, and `<iframe>` / `<object>` load nothing.
 
-PDF output loads nothing from the web: an image or stylesheet at an `http(s)://` address is left out, with a warning (Word output shows `[alt text]` for it; HTML output keeps the address, so the browser loads it when the file is opened). Every format does read the local files the Markdown points at, so only convert Markdown you trust.
+PDF output loads nothing from the web: an image or stylesheet at an `http(s)://` address is left out, with a warning (Word output shows `[alt text]` for such an image and ignores raw stylesheet tags; HTML output keeps the address, so the browser loads it when the file is opened). Every format does read the local files the Markdown points at, so only convert Markdown you trust.
 
 ### Page numbers in a Word file's contents page
 
