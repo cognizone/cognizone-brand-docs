@@ -42,7 +42,7 @@ package.json              # npm package config
 
 ## Testing
 
-`npm test` runs `test/run.js` (no framework). It writes only to `test/output/`, a git-ignored scratch folder it wipes at the start of every run, so a test run leaves the working tree clean. Add a regression test there for every rendering bug fixed.
+`npm test` runs `test/run.js` (no framework). It writes only to `test/output/`, a git-ignored scratch folder it wipes at the start of every run, so a test run leaves the working tree clean (one exception: the PDF temp-folder test uses a short folder in the system temp dir and removes it, since Linux caps Chrome's socket path in `TMPDIR` at 108 characters). Add a regression test there for every rendering bug fixed.
 
 The README's sample outputs are `docs/samples/brand-2026.{pdf,docx}` (tracked). `npm run samples` regenerates them: it runs the tests, then converts the test's fixture copy (`test/output/brand-2026.md`) with the real CLI, so on macOS with Word the Word sample gets its contents page numbers (Word may show "Grant File Access" for `docs/samples/` the first time). Run it only when the look of the output changes, and commit the result. The README screenshots in `docs/screenshots/` are cropped from `docs/samples/brand-2026.pdf` with `pdftoppm -r 150`.
 

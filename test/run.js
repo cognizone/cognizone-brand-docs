@@ -1378,8 +1378,9 @@ try {
   // The PDF's temporary page lives in its own fresh folder (not a predictable name in
   // TMPDIR itself), removed afterwards. A preloaded spy logs the .html files written.
   {
-    const tmp = path.join(dir, 'tmpdir');
-    fs.mkdirSync(tmp);
+    // In the system temp folder, not test/output: Chrome makes a socket in TMPDIR and Linux
+    // caps socket paths at 108 characters, which a deep checkout (CI) exceeds
+    const tmp = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cz-'));
     const spyLog = path.join(dir, 'tmp-spy.log');
     const spy = write('tmp-spy.js', 'const fs = require("fs");\nconst write = fs.writeFileSync;\n'
       + 'fs.writeFileSync = function (file, ...rest) {\n'
@@ -1393,6 +1394,7 @@ try {
       r.status === 0 && written.length === 1 && path.dirname(path.dirname(written[0])) === tmp
       && /^cognizone-[^/]{6}$/.test(path.basename(path.dirname(written[0]))), `${written.join(' ')} ${r.stderr}`);
     assert('pdf: temporary files removed from TMPDIR after the conversion', r.status === 0 && !left.length, `${left.join(' ')} ${r.stderr}`);
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
 
